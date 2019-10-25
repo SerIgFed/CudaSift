@@ -55,8 +55,13 @@ int main(int argc, char **argv)
   InitCuda(devNum);
   {
     CudaImage img1, img2;
-    img1.Allocate(w, h, iAlignUp(w, 128), false, NULL, (float *)limg.data);
-    img2.Allocate(w, h, iAlignUp(w, 128), false, NULL, (float *)rimg.data);
+    cudaStream_t stream1, stream2;
+    cudaStreamCreate(&stream1);
+    cudaStreamCreate(&stream2);
+    img1.Allocate(w, h, iAlignUp(w, 128), false, NULL, (float *)limg.data,
+                  stream1);
+    img2.Allocate(w, h, iAlignUp(w, 128), false, NULL, (float *)rimg.data,
+                  stream2);
     img1.Download();
     img2.Download();
 
@@ -64,8 +69,8 @@ int main(int argc, char **argv)
     SiftData siftData1, siftData2;
     float initBlur = 1.0f;
     float thresh = (imgSet ? 4.5f : 3.0f);
-    InitSiftData(siftData1, num_features, true, true);
-    InitSiftData(siftData2, num_features, true, true);
+    InitSiftData(siftData1, num_features, true, true, stream1);
+    InitSiftData(siftData2, num_features, true, true, stream2);
 
     // A bit of benchmarking
     // for (float thresh1=1.00f;thresh1<=4.01f;thresh1+=0.50f) {
@@ -120,6 +125,8 @@ int main(int argc, char **argv)
     FreeSiftData(siftData2);
     FreeSiftTempMemory(memoryTmp1);
     FreeSiftTempMemory(memoryTmp2);
+    cudaStreamDestroy(stream1);
+    cudaStreamDestroy(stream2);
   }
 
   std::cout << "Multithreaded benchmark\n";
@@ -129,15 +136,19 @@ int main(int argc, char **argv)
 
   for (int i = 1; i <= 16; ++i) {
     std::vector<float*> memoryTmp;
+    std::vector<cudaStream_t> streams;
     std::vector<CudaImage> imgs;
     std::vector<SiftData> siftData;
     for (int j = 0; j < i; ++j) {
       memoryTmp.push_back(AllocSiftTempMemory(w, h, 5, false));
+      cudaStream_t stream;
+      cudaStreamCreate(&stream);
+      streams.push_back(stream);
       CudaImage img;
-      img.Allocate(w, h, iAlignUp(w, 128), false, nullptr, (float*)limg.data);
+      img.Allocate(w, h, iAlignUp(w, 128), false, nullptr, (float*)limg.data, stream);
       imgs.push_back(std::move(img));
       SiftData data;
-      InitSiftData(data, num_features, true, true);
+      InitSiftData(data, num_features, true, true, stream);
       siftData.push_back(data);
     }
     tbb::task_scheduler_init scheduler{i};
@@ -147,10 +158,11 @@ int main(int argc, char **argv)
 
     auto bench_start = std::chrono::high_resolution_clock::now();
     tbb::parallel_for(0, iterations, [&siftData, &imgs, &memoryTmp, &ctr,
-                                initBlur, thresh, i](const auto &r) {
+                                &streams, initBlur, thresh, i](const auto &r) {
       int tid = ctr++ % i;
       imgs[tid].Download();
       ExtractSift(siftData[tid], imgs[tid], 5, initBlur, thresh, 0.0f, false, memoryTmp[tid]);
+      cudaStreamSynchronize(streams[tid]);
     });
     auto bench_end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::milli> bench_ms =
@@ -160,6 +172,7 @@ int main(int argc, char **argv)
     for (int j = 0; j < i; ++j) {
       FreeSiftData(siftData[j]);
       FreeSiftTempMemory(memoryTmp[j]);
+      cudaStreamDestroy(streams[j]);
     }
   }
 }

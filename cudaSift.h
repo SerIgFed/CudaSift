@@ -30,13 +30,14 @@ typedef struct {
   SiftPoint *h_data;  // Host (CPU) data
   SiftPoint *d_data;  // Device (GPU) data
 #endif
+  cudaStream_t stream;
 } SiftData;
 
 void InitCuda(int devNum = 0);
 float *AllocSiftTempMemory(int width, int height, int numOctaves, bool scaleUp = false);
 void FreeSiftTempMemory(float *memoryTmp);
 void ExtractSift(SiftData &siftData, CudaImage &img, int numOctaves, double initBlur, float thresh, float lowestScale = 0.0f, bool scaleUp = false, float *tempMemory = 0);
-void InitSiftData(SiftData &data, int num = 1024, bool host = false, bool dev = true);
+void InitSiftData(SiftData &data, int num = 1024, bool host = false, bool dev = true, cudaStream_t stream = 0);
 void FreeSiftData(SiftData &data);
 void PrintSiftData(SiftData &data);
 double MatchSiftData(SiftData &data1, SiftData &data2);

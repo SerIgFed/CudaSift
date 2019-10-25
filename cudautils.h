@@ -9,22 +9,12 @@
 #endif
 
 #define safeCall(err)       __safeCall(err, __FILE__, __LINE__)
-#define safeThreadSync()    __safeThreadSync(__FILE__, __LINE__)
 #define checkMsg(msg)       __checkMsg(msg, __FILE__, __LINE__)
 
 inline void __safeCall(cudaError err, const char *file, const int line)
 {
   if (cudaSuccess != err) {
     fprintf(stderr, "safeCall() Runtime API error in file <%s>, line %i : %s.\n", file, line, cudaGetErrorString(err));
-    exit(-1);
-  }
-}
-
-inline void __safeThreadSync(const char *file, const int line)
-{
-  cudaError err = cudaDeviceSynchronize();
-  if (cudaSuccess != err) {
-    fprintf(stderr, "threadSynchronize() Driver API error in file '%s' in line %i : %s.\n", file, line, cudaGetErrorString(err));
     exit(-1);
   }
 }

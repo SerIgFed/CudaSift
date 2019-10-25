@@ -11,6 +11,8 @@ set(CPACK_PACKAGE_VERSION_PATCH "${cudaSift_VERSION_PATCH}")
 set(CPACK_GENERATOR "ZIP")
 include(CPack)
 
+set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+
 find_package(OpenCV REQUIRED)
 find_package(CUDA)
 if (NOT CUDA_FOUND)

@@ -5,6 +5,8 @@
 #ifndef CUDAIMAGE_H
 #define CUDAIMAGE_H
 
+#include <cuda_runtime.h>
+
 class CudaImage {
 public:
   int width, height;
@@ -14,6 +16,7 @@ public:
   float *t_data;
   bool d_internalAlloc;
   bool h_internalAlloc;
+  cudaStream_t stream;
 public:
   CudaImage();
   ~CudaImage();
@@ -22,7 +25,7 @@ public:
   CudaImage &operator=(CudaImage &&other) noexcept;
   CudaImage &operator=(const CudaImage &other) = delete;
 
-  void Allocate(int width, int height, int pitch, bool withHost, float *devMem = NULL, float *hostMem = NULL);
+  void Allocate(int width, int height, int pitch, bool withHost, float *devMem = NULL, float *hostMem = NULL, cudaStream_t stream = 0);
   double Download();
   double Readback();
   double InitTexture();
