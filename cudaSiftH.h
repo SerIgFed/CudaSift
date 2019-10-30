@@ -6,14 +6,22 @@
 
 //********************************************************//
 // CUDA SIFT extractor by Marten Bjorkman aka Celebrandil //
-//********************************************************//  
-class TempMemory;
-int ExtractSiftLoop(SiftData &siftData, const CudaImage &img, int numOctaves, double initBlur, float thresh, float lowestScale, float subsampling, TempMemory &memoryTmp);
-void ExtractSiftOctave(SiftData &siftData, const CudaImage &img, int octave, float thresh, float lowestScale, float subsampling, TempMemory &memoryTmp);
+//********************************************************//
+
+int ExtractSiftLoop(SiftData &siftData, const CudaImage &img, int numOctaves,
+                    double initBlur, float thresh, float lowestScale,
+                    const DescriptorNormalizerData *normalizer_d,
+                    float subsampling, TempMemory &memorySub);
+void ExtractSiftOctave(SiftData &siftData, const CudaImage &img, int octave,
+                       float thresh, float lowestScale,
+                       const DescriptorNormalizerData *normalizer_d,
+                       float subsampling, TempMemory &memoryTmp);
 double ScaleDown(const SiftData &siftData, const CudaImage &res, const CudaImage &src, float variance);
 double ScaleUp(const SiftData &siftData, const CudaImage &res, const CudaImage &src);
 double ComputeOrientations(cudaTextureObject_t texObj, const CudaImage &src, SiftData &siftData, int octave);
-double ExtractSiftDescriptors(cudaTextureObject_t texObj, SiftData &siftData, float subsampling, int octave);
+double ExtractSiftDescriptors(cudaTextureObject_t texObj, SiftData &siftData,
+                              const DescriptorNormalizerData *normalizer_d,
+                              float subsampling, int octave);
 double OrientAndExtract(cudaTextureObject_t texObj, SiftData &siftData, float subsampling, int octave);
 double RescalePositions(SiftData &siftData, float scale);
 double LowPass(const SiftData &siftData, const CudaImage &res, const CudaImage &src, float scale);

@@ -71,25 +71,33 @@ int main(int argc, char **argv)
     float initBlur = 1.0f;
     float thresh = (imgSet ? 4.5f : 3.0f);
 
+    DescriptorNormalizerData data;
+    data.n_steps = 5;
+    data.n_data = 1;
+    int steps[] = {1, 4, 1, 3, 0};
+    float dataf[] = {0.2f};
+    data.normalizer_steps = steps;
+    data.data = dataf;
+
     // A bit of benchmarking
     // for (float thresh1=1.00f;thresh1<=4.01f;thresh1+=0.50f) {
     TempMemory memoryTmp1(w, h, 5, false);
     TempMemory memoryTmp2(w, h, 5, false);
-    ExtractSift(siftData1, img1, 5, initBlur, thresh, 0.0f, false, memoryTmp1);
-    ExtractSift(siftData2, img2, 5, initBlur, thresh, 0.0f, false, memoryTmp2);
+    ExtractSift(siftData1, img1, 5, initBlur, thresh, data, 0.0f, false, memoryTmp1);
+    ExtractSift(siftData2, img2, 5, initBlur, thresh, data, 0.0f, false, memoryTmp2);
 
     constexpr int iterations = 1000;
 
     auto bench_start = std::chrono::high_resolution_clock::now();
-    std::thread thread1([&siftData1, &img1, &initBlur, &thresh, &memoryTmp1]() {
+    std::thread thread1([&]() {
       for (int i = 0; i < iterations; i++) {
-        ExtractSift(siftData1, img1, 5, initBlur, thresh, 0.0f, false,
+        ExtractSift(siftData1, img1, 5, initBlur, thresh, data, 0.0f, false,
                     memoryTmp1);
       }
     });
-    std::thread thread2([&siftData2, &img2, &initBlur, &thresh, &memoryTmp2]() {
+    std::thread thread2([&]() {
       for (int i = 0; i < iterations; i++) {
-        ExtractSift(siftData2, img2, 5, initBlur, thresh, 0.0f, false,
+        ExtractSift(siftData2, img2, 5, initBlur, thresh, data, 0.0f, false,
                     memoryTmp2);
       }
     });
@@ -106,8 +114,9 @@ int main(int argc, char **argv)
       MatchSiftData(siftData1, siftData2);
     float homography[9];
     int numMatches;
-    FindHomography(siftData1, homography, &numMatches, 10000, 0.00f, 0.80f, 5.0);
-    int numFit = ImproveHomography(siftData1, homography, 5, 0.00f, 0.80f, 3.0);
+    FindHomography(siftData1, homography, &numMatches, 10000, 0.00f, 0.95f,
+                   5.0);
+    int numFit = ImproveHomography(siftData1, homography, 5, 0.00f, 0.95f, 3.0);
 
     std::cout << "Number of original features: " <<  siftData1.numPts << " " << siftData2.numPts << std::endl;
     std::cout << "Number of matching features: " << numFit << " " << numMatches << " " << 100.0f*numFit/std::min(siftData1.numPts, siftData2.numPts) << "% " << initBlur << " " << thresh << std::endl;
@@ -145,17 +154,25 @@ int main(int argc, char **argv)
       SiftData data(num_features, true, true, stream);
       siftData.push_back(std::move(data));
     }
+
+    DescriptorNormalizerData data;
+    data.n_steps = 5;
+    data.n_data = 1;
+    int steps[] = {1, 4, 1, 3, 0};
+    float dataf[] = {0.2f};
+    data.normalizer_steps = steps;
+    data.data = dataf;
+
     tbb::task_scheduler_init scheduler{i};
     std::atomic<int> ctr{0};
 
     constexpr int iterations = 1000;
 
     auto bench_start = std::chrono::high_resolution_clock::now();
-    tbb::parallel_for(0, iterations, [&siftData, &imgs, &memoryTmp, &ctr,
-                                &streams, initBlur, thresh, i](const auto &r) {
+    tbb::parallel_for(0, iterations, [&](const auto &r) {
       int tid = ctr++ % i;
       imgs[tid].Download();
-      ExtractSift(siftData[tid], imgs[tid], 5, initBlur, thresh, 0.0f, false, memoryTmp[tid]);
+      ExtractSift(siftData[tid], imgs[tid], 5, initBlur, thresh, data, 0.0f, false, memoryTmp[tid]);
       cudaStreamSynchronize(streams[tid]);
     });
     auto bench_end = std::chrono::high_resolution_clock::now();
