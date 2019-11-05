@@ -74,8 +74,8 @@ int main(int argc, char **argv)
 
     // A bit of benchmarking
     // for (float thresh1=1.00f;thresh1<=4.01f;thresh1+=0.50f) {
-    float* memoryTmp1 = AllocSiftTempMemory(w, h, 5, false);
-    float* memoryTmp2 = AllocSiftTempMemory(w, h, 5, false);
+    TempMemory memoryTmp1(w, h, 5, false);
+    TempMemory memoryTmp2(w, h, 5, false);
     ExtractSift(siftData1, img1, 5, initBlur, thresh, 0.0f, false, memoryTmp1);
     ExtractSift(siftData2, img2, 5, initBlur, thresh, 0.0f, false, memoryTmp2);
 
@@ -123,8 +123,6 @@ int main(int argc, char **argv)
     // Free Sift data from device
     FreeSiftData(siftData1);
     FreeSiftData(siftData2);
-    FreeSiftTempMemory(memoryTmp1);
-    FreeSiftTempMemory(memoryTmp2);
     cudaStreamDestroy(stream1);
     cudaStreamDestroy(stream2);
   }
@@ -135,12 +133,12 @@ int main(int argc, char **argv)
   float thresh = (imgSet ? 4.5f : 3.0f);
 
   for (int i = 1; i <= 16; ++i) {
-    std::vector<float*> memoryTmp;
+    std::vector<TempMemory> memoryTmp;
     std::vector<cudaStream_t> streams;
     std::vector<CudaImage> imgs;
     std::vector<SiftData> siftData;
     for (int j = 0; j < i; ++j) {
-      memoryTmp.push_back(AllocSiftTempMemory(w, h, 5, false));
+      memoryTmp.emplace_back(w, h, 5, false);
       cudaStream_t stream;
       cudaStreamCreate(&stream);
       streams.push_back(stream);
@@ -171,7 +169,6 @@ int main(int argc, char **argv)
               << iterations * 1000. / bench_ms.count() << " fps\n";
     for (int j = 0; j < i; ++j) {
       FreeSiftData(siftData[j]);
-      FreeSiftTempMemory(memoryTmp[j]);
       cudaStreamDestroy(streams[j]);
     }
   }

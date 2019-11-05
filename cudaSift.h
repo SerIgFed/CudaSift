@@ -2,6 +2,7 @@
 #define CUDASIFT_H
 
 #include "cudaImage.h"
+#include <vector>
 
 typedef struct {
   float xpos;
@@ -33,10 +34,36 @@ typedef struct {
   cudaStream_t stream;
 } SiftData;
 
+class TempMemory {
+public:
+  float *laplaceBuffer() const { return d_data; }
+  CudaImage image(int octave, cudaStream_t stream = 0) const;
+  cudaTextureObject_t texture(int octave) const;
+
+  operator bool() const { return d_data; }
+  TempMemory(int width, int height, int num_octaves, bool scale_up = false);
+  TempMemory(const TempMemory &other) = delete;
+  TempMemory &operator =(const TempMemory &other) = delete;
+  TempMemory(TempMemory &&other) noexcept;
+  TempMemory &operator =(TempMemory &&other) noexcept;
+  ~TempMemory();
+
+private:
+  float *imageBuffer() const { return d_data + laplace_buffer_size; }
+
+  std::vector<cudaTextureObject_t> textures;
+  float *d_data = nullptr;
+  size_t laplace_buffer_size;
+  int width, height;
+  int num_octaves;
+};
+
 void InitCuda(int devNum = 0);
-float *AllocSiftTempMemory(int width, int height, int numOctaves, bool scaleUp = false);
-void FreeSiftTempMemory(float *memoryTmp);
-void ExtractSift(SiftData &siftData, CudaImage &img, int numOctaves, double initBlur, float thresh, float lowestScale = 0.0f, bool scaleUp = false, float *tempMemory = 0);
+void ExtractSift(SiftData &siftData, const CudaImage &img, int numOctaves, double initBlur, float thresh, float lowestScale, bool scaleUp, TempMemory &tempMemory);
+inline void ExtractSift(SiftData &siftData, const CudaImage &img, int numOctaves, double initBlur, float thresh, float lowestScale = 0.0f, bool scaleUp = false) {
+  TempMemory tmp(img.width, img.height, numOctaves, scaleUp);
+  ExtractSift(siftData, img, numOctaves, initBlur, thresh, lowestScale, scaleUp, tmp);
+}
 void InitSiftData(SiftData &data, int num = 1024, bool host = false, bool dev = true, cudaStream_t stream = 0);
 void FreeSiftData(SiftData &data);
 void PrintSiftData(SiftData &data);
