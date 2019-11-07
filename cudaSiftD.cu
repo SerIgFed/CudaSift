@@ -400,6 +400,7 @@ __global__ void ExtractSiftDescriptorsCONSTNew(cudaTextureObject_t texObj, SiftP
     sum = tsum1*tsum1; 
     for (int i=16;i>0;i/=2)
       sum += ShiftDown(sum, i);
+    __syncthreads();
     if ((idx&31)==0)
       sums[idx/32] = sum;
     __syncthreads();
