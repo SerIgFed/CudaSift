@@ -113,3 +113,31 @@ double CudaImage::CopyToTexture(CudaImage &dst, bool host)
 #endif
   return gpuTime;
 }
+
+CudaImage::CudaImage(CudaImage &&other) noexcept :
+    width(other.width), height(other.height), pitch(other.pitch),
+    h_data(other.h_data), d_data(other.d_data), t_data(other.t_data),
+    d_internalAlloc(other.d_internalAlloc), h_internalAlloc(other.h_internalAlloc) {
+  other.h_data = nullptr;
+  other.d_data = nullptr;
+  other.t_data = nullptr;
+}
+
+CudaImage &CudaImage::operator=(CudaImage &&other) noexcept {
+  if (&other == this)
+    return *this;
+
+  width = other.width;
+  height = other.height;
+  pitch = other.pitch;
+  h_data = other.h_data;
+  d_data = other.d_data;
+  t_data = other.t_data;
+  d_internalAlloc = other.d_internalAlloc;
+  h_internalAlloc = other.h_internalAlloc;
+
+  other.h_data = nullptr;
+  other.d_data = nullptr;
+  other.t_data = nullptr;
+  return *this;
+}

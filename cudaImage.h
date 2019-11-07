@@ -17,6 +17,11 @@ public:
 public:
   CudaImage();
   ~CudaImage();
+  CudaImage(CudaImage &&other) noexcept;
+  CudaImage(const CudaImage &other) = delete;
+  CudaImage &operator=(CudaImage &&other) noexcept;
+  CudaImage &operator=(const CudaImage &other) = delete;
+
   void Allocate(int width, int height, int pitch, bool withHost, float *devMem = NULL, float *hostMem = NULL);
   double Download();
   double Readback();
