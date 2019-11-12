@@ -1,77 +1,28 @@
 cmake_minimum_required(VERSION 2.6)
 
-project(cudaSift)
-set(cudaSift_VERSION_MAJOR 2)
-set(cudaSift_VERSION_MINOR 0)
-set(cudaSift_VERSION_PATCH 0)
+project(cudaSift LANGUAGES CUDA CXX)
+set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
 
-set(CPACK_PACKAGE_VERSION_MAJOR "${cudaSift_VERSION_MAJOR}")
-set(CPACK_PACKAGE_VERSION_MINOR "${cudaSift_VERSION_MINOR}")
-set(CPACK_PACKAGE_VERSION_PATCH "${cudaSift_VERSION_PATCH}")
-set(CPACK_GENERATOR "ZIP")
+include(GetGitRevisionDescription)
+git_describe(VERSION --tags)# --dirty=d)
+
+string(REGEX REPLACE "^v([0-9]+)\\..*" "\\1" VERSION_MAJOR "${VERSION}")
+string(REGEX REPLACE "^v[0-9]+\\.([0-9]+).*" "\\1" VERSION_MINOR "${VERSION}")
+string(REGEX REPLACE "^v[0-9]+\\.[0-9]+\\.([0-9]+).*" "\\1" VERSION_PATCH "${VERSION}")
+string(REGEX REPLACE "^v[0-9]+\\.[0-9]+\\.[0-9]+(.*)" "\\1" VERSION_SHA1 "${VERSION}")
+set(VERSION_SHORT "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}${VERSION_SHA1}")
+
+set(CMAKE_PROJECT_VERSION_MAJOR "${VERSION_MAJOR}")
+set(CMAKE_PROJECT_VERSION_MINOR "${VERSION_MINOR}")
+set(CMAKE_PROJECT_VERSION_PATCH "${VERSION_PATCH}${VERSION_SHA1}")
+set(CPACK_GENERATOR "TGZ")
 include(CPack)
 
-set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 find_package(OpenCV REQUIRED)
-find_package(CUDA)
-if (NOT CUDA_FOUND)
-  message(STATUS "CUDA not found. Project will not be built.")
-endif(NOT CUDA_FOUND)
 
-if (WIN32)
-  set(EXTRA_CXX_FLAGS "/DVERBOSE /D_CRT_SECURE_NO_WARNINGS ")
-  list(APPEND CUDA_NVCC_FLAGS "-arch=sm_35;--compiler-options;-O2;-DVERBOSE")
-endif()
-if (UNIX)
-  if (APPLE)
-    set(EXTRA_CXX_FLAGS "-DVERBOSE -msse2")
-    list(APPEND CUDA_NVCC_FLAGS "-arch=sm_35;--compiler-options;-O2;-DVERBOSE")
-  else()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -msse2 ")
-    list(APPEND CUDA_NVCC_FLAGS "-lineinfo;-ccbin;/usr/bin/gcc-8;--compiler-options;-O2;-D_FORCE_INLINES;-DVERBOSE_NOT")
-  endif()
-endif()
+include(GNUInstallDirs)
 
-set(cuda_sources
-  cudaImage.cu  
-  cudaImage.h  
-  cudaSiftH.cu 
-  cudaSiftH.h  
-  matching.cu  
-  cudaSiftD.h  
-  cudaSift.h  
-  cudautils.h
-)  
+add_subdirectory(cudasift)
+add_subdirectory(examples)
 
-set(sources
-  geomFuncs.cpp  
-  mainSift.cpp  
-)
-
-include_directories(
-  ${CMAKE_CURRENT_SOURCE_DIR} 
-)
-
-find_package(TBB REQUIRED)
-#SET(CUDA_SEPARABLE_COMPILATION ON)
-
-cuda_add_executable(cudasift ${cuda_sources} ${sources} OPTIONS -arch=sm_75)
-
-set_target_properties(cudasift PROPERTIES
-  COMPILE_FLAGS "${EXTRA_CXX_FLAGS}"			   
-)
-
-target_link_libraries(cudasift ${CUDA_cudadevrt_LIBRARY} ${OpenCV_LIBS} TBB::tbb)
-
-install(FILES 
-  ${cuda_sources} 
-  ${sources}
-  cudaSiftD.cu
-  CMakeLists.txt
-  Copyright.txt
-  DESTINATION .
-)
-install(FILES data/left.pgm data/righ.pgm
-  DESTINATION data
-)

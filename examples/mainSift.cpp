@@ -14,8 +14,8 @@
 #include <tbb/task_scheduler_init.h>
 #include <thread>
 
-#include "cudaImage.h"
-#include "cudaSift.h"
+#include "cudasift/cudaImage.h"
+#include "cudasift/cudaSift.h"
 
 int ImproveHomography(SiftData &data, float *homography, int numLoops, float minScore, float maxAmbiguity, float thresh);
 void PrintMatchData(SiftData &siftData1, SiftData &siftData2, CudaImage &img);
