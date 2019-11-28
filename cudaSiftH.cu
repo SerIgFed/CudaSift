@@ -151,9 +151,7 @@ TempMemory::~TempMemory() {
 void ExtractSift(SiftData &siftData, const CudaImage &img, int numOctaves, double initBlur, float thresh, float lowestScale, bool scaleUp, TempMemory &tempMemory)
 {
 //  TimerGPU timer(siftData.stream);
-  unsigned int *d_PointCounterAddr;
-  safeCall(cudaGetSymbolAddress((void**)&d_PointCounterAddr, d_PointCounter));
-  safeCall(cudaMemsetAsync(d_PointCounterAddr, 0, (8*2+1)*sizeof(int), siftData.stream));
+  safeCall(cudaMemsetAsync(siftData.d_PointCounter, 0, (8*2+1)*sizeof(int), siftData.stream));
   safeCall(cudaMemcpyToSymbolAsync(d_MaxNumPoints, &siftData.maxPts, sizeof(int), 0, cudaMemcpyHostToDevice, siftData.stream));
 
   int width = img.width*(scaleUp ? 2 : 1);
@@ -173,7 +171,7 @@ void ExtractSift(SiftData &siftData, const CudaImage &img, int numOctaves, doubl
     LowPass(siftData, lowImg, img, max(initBlur, 0.001f));
 //    TimerGPU timer1(siftData.stream);
     ExtractSiftLoop(siftData, lowImg, numOctaves, 0.0f, thresh, lowestScale, 1.0f, tempMemory);
-    safeCall(cudaMemcpyAsync(&siftData.numPts, &d_PointCounterAddr[2*numOctaves], sizeof(int), cudaMemcpyDeviceToHost, siftData.stream));
+    safeCall(cudaMemcpyAsync(&siftData.numPts, &siftData.d_PointCounter[2*numOctaves], sizeof(int), cudaMemcpyDeviceToHost, siftData.stream));
     safeCall(cudaStreamSynchronize(siftData.stream));
     siftData.numPts = (siftData.numPts<siftData.maxPts ? siftData.numPts : siftData.maxPts);
 //    printf("SIFT extraction time =        %.2f ms %d\n", timer1.read(), siftData.numPts);
@@ -187,7 +185,7 @@ void ExtractSift(SiftData &siftData, const CudaImage &img, int numOctaves, doubl
     PrepareLaplaceKernels(numOctaves, 0.0f, kernel);
     safeCall(cudaMemcpyToSymbolAsync(d_LaplaceKernel, kernel, 8*12*16*sizeof(float), 0, cudaMemcpyHostToDevice, siftData.stream));
     ExtractSiftLoop(siftData, lowImg, numOctaves, 0.0f, thresh, lowestScale*2.0f, 1.0f, tempMemory);
-    safeCall(cudaMemcpyAsync(&siftData.numPts, &d_PointCounterAddr[2*numOctaves], sizeof(int), cudaMemcpyDeviceToHost, siftData.stream));
+    safeCall(cudaMemcpyAsync(&siftData.numPts, &siftData.d_PointCounter[2*numOctaves], sizeof(int), cudaMemcpyDeviceToHost, siftData.stream));
     siftData.numPts = (siftData.numPts<siftData.maxPts ? siftData.numPts : siftData.maxPts);
     RescalePositions(siftData, 0.5f);
 //    printf("SIFT extraction time =        %.2f ms\n", timer1.read());
@@ -225,10 +223,9 @@ void ExtractSiftOctave(SiftData &siftData, const CudaImage &img, int octave, flo
 {
   const int nd = NUM_SCALES + 3;
 #ifdef VERBOSE
-  unsigned int *d_PointCounterAddr;
-  safeCall(cudaGetSymbolAddress((void**)&d_PointCounterAddr, d_PointCounter));
+  safeCall(cudaGetSymbolAddress((void**)&siftData.d_PointCounter, d_PointCounter));
   unsigned int fstPts, totPts;
-  safeCall(cudaMemcpy(&fstPts, &d_PointCounterAddr[2*octave-1], sizeof(int), cudaMemcpyDeviceToHost)); 
+  safeCall(cudaMemcpy(&fstPts, &siftData.d_PointCounter[2*octave-1], sizeof(int), cudaMemcpyDeviceToHost));
   TimerGPU timer0;
 #endif
   CudaImage diffImg[nd];
@@ -262,7 +259,7 @@ void ExtractSiftOctave(SiftData &siftData, const CudaImage &img, int octave, flo
   double gpuTimeSift = timer4.read();
   double totTime = timer0.read();
   printf("GPU time : %.2f ms + %.2f ms + %.2f ms = %.2f ms\n", totTime-gpuTimeDoG-gpuTimeSift, gpuTimeDoG, gpuTimeSift, totTime);
-  safeCall(cudaMemcpy(&totPts, &d_PointCounterAddr[2*octave+1], sizeof(int), cudaMemcpyDeviceToHost));
+  safeCall(cudaMemcpy(&totPts, &siftData.d_PointCounter[2*octave+1], sizeof(int), cudaMemcpyDeviceToHost));
   totPts = (totPts<siftData.maxPts ? totPts : siftData.maxPts);
   if (totPts>0) 
     printf("           %.2f ms / DoG,  %.4f ms / Sift,  #Sift = %d\n", gpuTimeDoG/NUM_SCALES, gpuTimeSift/(totPts-fstPts), totPts-fstPts); 
@@ -364,7 +361,7 @@ double ComputeOrientations(cudaTextureObject_t texObj, const CudaImage &src, Sif
 #else
 #if 1
   dim3 threads(11*11);
-  ComputeOrientationsCONST<<<blocks, threads, 0, siftData.stream>>>(texObj, siftData.d_data, octave);
+  ComputeOrientationsCONST<<<blocks, threads, 0, siftData.stream>>>(texObj, siftData.d_data, siftData.d_PointCounter, octave);
 #else
   dim3 threads(256); 
   ComputeOrientationsCONSTNew<<<blocks, threads, 0, siftData.stream>>>(src.d_data, src.width, src.pitch, src.height, siftData.d_data, octave);
@@ -381,7 +378,7 @@ double ExtractSiftDescriptors(cudaTextureObject_t texObj, SiftData &siftData, fl
 #ifdef MANAGEDMEM
   ExtractSiftDescriptorsCONST<<<blocks, threads, 0, siftData.stream>>>(texObj, siftData.m_data, subsampling, octave);
 #else
-  ExtractSiftDescriptorsCONSTNew<<<blocks, threads, 0, siftData.stream>>>(texObj, siftData.d_data, subsampling, octave);
+  ExtractSiftDescriptorsCONSTNew<<<blocks, threads, 0, siftData.stream>>>(texObj, siftData.d_data, siftData.d_PointCounter, subsampling, octave);
 #endif
   checkMsg("ExtractSiftDescriptors() execution failed\n");
   return 0.0; 
@@ -394,7 +391,7 @@ double OrientAndExtract(cudaTextureObject_t texObj, SiftData &siftData, float su
 #ifdef MANAGEDMEM
   OrientAndExtractCONST<<<blocks, threads, 0, siftData.stream>>>(texObj, siftData.m_data, subsampling, octave);
 #else
-  OrientAndExtractCONST<<<blocks, threads, 0, siftData.stream>>>(texObj, siftData.d_data, subsampling, octave);
+  OrientAndExtractCONST<<<blocks, threads, 0, siftData.stream>>>(texObj, siftData.d_data, siftData.d_PointCounter, subsampling, octave);
 #endif
   checkMsg("OrientAndExtract() execution failed\n");
   return 0.0;
@@ -513,7 +510,7 @@ double FindPointsMulti(const CudaImage *sources, SiftData &siftData, float thres
 #ifdef MANAGEDMEM
   FindPointsMulti<<<blocks, threads, 0, siftData.stream>>>(sources->d_data, siftData.m_data, w, p, h, subsampling, lowestScale, thresh, factor, edgeLimit, octave);
 #else
-  FindPointsMultiNew<<<blocks, threads, 0, siftData.stream>>>(sources->d_data, siftData.d_data, w, p, h, subsampling, lowestScale, thresh, factor, edgeLimit, octave);
+  FindPointsMultiNew<<<blocks, threads, 0, siftData.stream>>>(sources->d_data, siftData.d_data, siftData.d_PointCounter, w, p, h, subsampling, lowestScale, thresh, factor, edgeLimit, octave);
 #endif
 #endif
   checkMsg("FindPointsMulti() execution failed\n");
@@ -535,6 +532,8 @@ SiftData::SiftData(int num, bool host, bool dev, cudaStream_t stream_) {
     safeCall(cudaMalloc((void **)&d_data, sz));
   stream = stream_;
 #endif
+  if (dev)
+    safeCall(cudaMalloc(&d_PointCounter, (8*2+1)*sizeof(*d_PointCounter)));
 }
 
 SiftData::~SiftData() {
@@ -546,15 +545,18 @@ SiftData::~SiftData() {
     safeCall(cudaFree(d_data));
   delete[] h_data;
 #endif
+  if (d_PointCounter!=nullptr)
+    safeCall(cudaFree(d_PointCounter));
 }
 
 SiftData::SiftData(SiftData &&other) noexcept
   : numPts(other.numPts), maxPts(other.maxPts),
 #ifdef MANAGEDMEM
-    m_data(other.m_data)
+    m_data(other.m_data),
 #else
-    h_data(other.h_data), d_data(other.d_data), stream(other.stream)
+    h_data(other.h_data), d_data(other.d_data), stream(other.stream),
 #endif
+    d_PointCounter(other.d_PointCounter)
 {
 #ifdef MANAGEDMEM
   other.m_data = nullptr;
@@ -562,6 +564,7 @@ SiftData::SiftData(SiftData &&other) noexcept
   other.d_data = nullptr;
   other.h_data = nullptr;
 #endif
+  other.d_PointCounter = nullptr;
 }
 
 SiftData &SiftData::operator=(SiftData &&other) noexcept {
@@ -577,5 +580,7 @@ SiftData &SiftData::operator=(SiftData &&other) noexcept {
   other.d_data = nullptr;
   other.h_data = nullptr;
 #endif
+  d_PointCounter = other.d_PointCounter;
+  other.d_PointCounter = nullptr;
   return *this;
 }

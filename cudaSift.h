@@ -39,6 +39,7 @@ struct SiftData {
   SiftPoint *d_data;  // Device (GPU) data
   cudaStream_t stream;
 #endif
+  unsigned int *d_PointCounter;
 };
 
 class TempMemory {

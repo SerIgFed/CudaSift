@@ -11,8 +11,7 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 __constant__ int d_MaxNumPoints;
-__device__ unsigned int d_PointCounter[8*2+1];
-__constant__ float d_ScaleDownKernel[5]; 
+__constant__ float d_ScaleDownKernel[5];
 __constant__ float d_LowPassKernel[2*LOWPASS_R+1]; 
 __constant__ float d_LaplaceKernel[8*12*16]; 
 
@@ -305,7 +304,7 @@ __device__ float FastAtan2(float y, float x)
   return r;
 }
        
-__global__ void ExtractSiftDescriptorsCONSTNew(cudaTextureObject_t texObj, SiftPoint *d_sift, float subsampling, int octave)
+__global__ void ExtractSiftDescriptorsCONSTNew(cudaTextureObject_t texObj, SiftPoint *d_sift, unsigned int *d_PointCounter, float subsampling, int octave)
 {
   __shared__ float gauss[16];
   __shared__ float buffer[128];
@@ -418,7 +417,7 @@ __global__ void ExtractSiftDescriptorsCONSTNew(cudaTextureObject_t texObj, SiftP
 }
  
 
-__global__ void ExtractSiftDescriptorsCONST(cudaTextureObject_t texObj, SiftPoint *d_sift, float subsampling, int octave)
+__global__ void ExtractSiftDescriptorsCONST(cudaTextureObject_t texObj, SiftPoint *d_sift, unsigned int *d_PointCounter, float subsampling, int octave)
 {
   __shared__ float gauss[16];
   __shared__ float buffer[128];
@@ -762,7 +761,7 @@ __global__ void RescalePositions(SiftPoint *d_sift, int numPts, float scale)
 }
 
 
-__global__ void ComputeOrientations(cudaTextureObject_t texObj, SiftPoint *d_Sift, int fstPts)
+__global__ void ComputeOrientations(cudaTextureObject_t texObj, SiftPoint *d_Sift, unsigned int *d_PointCounter, int fstPts)
 {
   __shared__ float hist[64];
   __shared__ float gauss[11];
@@ -843,7 +842,7 @@ __global__ void ComputeOrientations(cudaTextureObject_t texObj, SiftPoint *d_Sif
 } 
 
 // With constant number of blocks
-__global__ void ComputeOrientationsCONSTNew(float *image, int w, int p, int h, SiftPoint *d_Sift, int octave)
+__global__ void ComputeOrientationsCONSTNew(float *image, int w, int p, int h, SiftPoint *d_Sift, unsigned int *d_PointCounter, int octave)
 {
 #define RAD 9
 #define WID (2*RAD + 1)
@@ -970,7 +969,7 @@ __global__ void ComputeOrientationsCONSTNew(float *image, int w, int p, int h, S
 } 
 
 // With constant number of blocks
-__global__ void ComputeOrientationsCONST(cudaTextureObject_t texObj, SiftPoint *d_Sift, int octave)
+__global__ void ComputeOrientationsCONST(cudaTextureObject_t texObj, SiftPoint *d_Sift, unsigned int *d_PointCounter, int octave)
 {
   __shared__ float hist[64];
   __shared__ float gauss[11];
@@ -1058,7 +1057,7 @@ __global__ void ComputeOrientationsCONST(cudaTextureObject_t texObj, SiftPoint *
 } 
 
 // With constant number of blocks
-__global__ void OrientAndExtractCONST(cudaTextureObject_t texObj, SiftPoint *d_Sift, float subsampling, int octave)
+__global__ void OrientAndExtractCONST(cudaTextureObject_t texObj, SiftPoint *d_Sift, unsigned int *d_PointCounter, float subsampling, int octave)
 {
   __shared__ float hist[64];
   __shared__ float gauss[11];
@@ -1155,7 +1154,7 @@ __global__ void OrientAndExtractCONST(cudaTextureObject_t texObj, SiftPoint *d_S
 // Subtract two images (multi-scale version)
 ///////////////////////////////////////////////////////////////////////////////
   
-__global__ void FindPointsMultiTest(float *d_Data0, SiftPoint *d_Sift, int width, int pitch, int height, float subsampling, float lowestScale, float thresh, float factor, float edgeLimit, int octave)
+__global__ void FindPointsMultiTest(float *d_Data0, SiftPoint *d_Sift, unsigned int *d_PointCounter, int width, int pitch, int height, float subsampling, float lowestScale, float thresh, float factor, float edgeLimit, int octave)
 {
   #define MEMWID (MINMAX_W + 2)
   __shared__ unsigned int cnt;
@@ -1290,7 +1289,7 @@ __global__ void FindPointsMultiTest(float *d_Data0, SiftPoint *d_Sift, int width
   }
 }
 
-__global__ void FindPointsMultiNew(float *d_Data0, SiftPoint *d_Sift, int width, int pitch, int height, float subsampling, float lowestScale, float thresh, float factor, float edgeLimit, int octave)
+__global__ void FindPointsMultiNew(float *d_Data0, SiftPoint *d_Sift, unsigned int *d_PointCounter, int width, int pitch, int height, float subsampling, float lowestScale, float thresh, float factor, float edgeLimit, int octave)
 {
   #define MEMWID (MINMAX_W + 2)
   __shared__ unsigned short points[2*MEMWID];
@@ -1431,7 +1430,7 @@ __global__ void FindPointsMultiNew(float *d_Data0, SiftPoint *d_Sift, int width,
   }
 }
 
-__global__ void FindPointsMulti(float *d_Data0, SiftPoint *d_Sift, int width, int pitch, int height, float subsampling, float lowestScale, float thresh, float factor, float edgeLimit, int octave)
+__global__ void FindPointsMulti(float *d_Data0, SiftPoint *d_Sift, unsigned int *d_PointCounter, int width, int pitch, int height, float subsampling, float lowestScale, float thresh, float factor, float edgeLimit, int octave)
 {
   #define MEMWID (MINMAX_W + 2)
   __shared__ unsigned int cnt;
@@ -1574,7 +1573,7 @@ __global__ void FindPointsMulti(float *d_Data0, SiftPoint *d_Sift, int width, in
 }
 
 
-__global__ void FindPointsMultiOld(float *d_Data0, SiftPoint *d_Sift, int width, int pitch, int height, float subsampling, float lowestScale, float thresh, float factor, float edgeLimit, int octave)
+__global__ void FindPointsMultiOld(float *d_Data0, SiftPoint *d_Sift, unsigned int *d_PointCounter, int width, int pitch, int height, float subsampling, float lowestScale, float thresh, float factor, float edgeLimit, int octave)
 {
   #define MEMWID (MINMAX_W + 2)
   __shared__ float ymin1[MEMWID], ymin2[MEMWID], ymin3[MEMWID];
