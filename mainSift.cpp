@@ -1,14 +1,18 @@
 //********************************************************//
 // CUDA SIFT extractor by Marten Björkman aka Celebrandil //
 //              celle @ csc.kth.se                       //
-//********************************************************//  
+//********************************************************//
 
-#include <iostream>  
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <iomanip>
+#include <iostream>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
+#include <tbb/parallel_for.h>
+#include <tbb/task_scheduler_init.h>
+#include <thread>
 
 #include "cudaImage.h"
 #include "cudaSift.h"
@@ -22,8 +26,8 @@ double ScaleUp(CudaImage &res, CudaImage &src);
 ///////////////////////////////////////////////////////////////////////////////
 // Main program
 ///////////////////////////////////////////////////////////////////////////////
-int main(int argc, char **argv) 
-{    
+int main(int argc, char **argv)
+{
   int devNum = 0, imgSet = 0;
   if (argc>1)
     devNum = std::atoi(argv[1]);
@@ -40,35 +44,59 @@ int main(int argc, char **argv)
     cv::imread("data/img2.png", 0).convertTo(rimg, CV_32FC1);
   }
   //cv::flip(limg, rimg, -1);
-  unsigned int w = limg.cols;
-  unsigned int h = limg.rows;
+  int w = limg.cols;
+  int h = limg.rows;
   std::cout << "Image size = (" << w << "," << h << ")" << std::endl;
-  
+
+  constexpr int num_features = 0x8000;
+
   // Initial Cuda images and download images to device
   std::cout << "Initializing data..." << std::endl;
-  InitCuda(devNum); 
-  CudaImage img1, img2;
-  img1.Allocate(w, h, iAlignUp(w, 128), false, NULL, (float*)limg.data);
-  img2.Allocate(w, h, iAlignUp(w, 128), false, NULL, (float*)rimg.data);
-  img1.Download();
-  img2.Download(); 
+  InitCuda(devNum);
+  {
+    CudaImage img1, img2;
+    img1.Allocate(w, h, iAlignUp(w, 128), false, NULL, (float *)limg.data);
+    img2.Allocate(w, h, iAlignUp(w, 128), false, NULL, (float *)rimg.data);
+    img1.Download();
+    img2.Download();
 
-  // Extract Sift features from images
-  SiftData siftData1, siftData2;
-  float initBlur = 1.0f;
-  float thresh = (imgSet ? 4.5f : 3.0f);
-  InitSiftData(siftData1, 32768, true, true); 
-  InitSiftData(siftData2, 32768, true, true);
-  
-  // A bit of benchmarking 
-  //for (int thresh1=1.00f;thresh1<=4.01f;thresh1+=0.50f) {
-  float *memoryTmp = AllocSiftTempMemory(w, h, 5, false);
-    for (int i=0;i<1000;i++) {
-      ExtractSift(siftData1, img1, 5, initBlur, thresh, 0.0f, false, memoryTmp);
-      ExtractSift(siftData2, img2, 5, initBlur, thresh, 0.0f, false, memoryTmp);
-    }
-    FreeSiftTempMemory(memoryTmp);
-    
+    // Extract Sift features from images
+    SiftData siftData1, siftData2;
+    float initBlur = 1.0f;
+    float thresh = (imgSet ? 4.5f : 3.0f);
+    InitSiftData(siftData1, num_features, true, true);
+    InitSiftData(siftData2, num_features, true, true);
+
+    // A bit of benchmarking
+    // for (float thresh1=1.00f;thresh1<=4.01f;thresh1+=0.50f) {
+    float* memoryTmp1 = AllocSiftTempMemory(w, h, 5, false);
+    float* memoryTmp2 = AllocSiftTempMemory(w, h, 5, false);
+    ExtractSift(siftData1, img1, 5, initBlur, thresh, 0.0f, false, memoryTmp1);
+    ExtractSift(siftData2, img2, 5, initBlur, thresh, 0.0f, false, memoryTmp2);
+
+    constexpr int iterations = 1000;
+
+    auto bench_start = std::chrono::high_resolution_clock::now();
+    std::thread thread1([&siftData1, &img1, &initBlur, &thresh, &memoryTmp1]() {
+      for (int i = 0; i < iterations; i++) {
+        ExtractSift(siftData1, img1, 5, initBlur, thresh, 0.0f, false,
+                    memoryTmp1);
+      }
+    });
+    std::thread thread2([&siftData2, &img2, &initBlur, &thresh, &memoryTmp2]() {
+      for (int i = 0; i < iterations; i++) {
+        ExtractSift(siftData2, img2, 5, initBlur, thresh, 0.0f, false,
+                    memoryTmp2);
+      }
+    });
+    thread1.join();
+    thread2.join();
+    auto bench_end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> bench_ms =
+        bench_end - bench_start;
+    std::cout << "Simple 2 thread benchmark (excluding copy): " << bench_ms.count() << " ms, "
+              << iterations*2. * 1000. / bench_ms.count() << " fps\n";
+
     // Match Sift features and find a homography
     for (int i=0;i<1;i++)
       MatchSiftData(siftData1, siftData2);
@@ -76,20 +104,64 @@ int main(int argc, char **argv)
     int numMatches;
     FindHomography(siftData1, homography, &numMatches, 10000, 0.00f, 0.80f, 5.0);
     int numFit = ImproveHomography(siftData1, homography, 5, 0.00f, 0.80f, 3.0);
-    
+
     std::cout << "Number of original features: " <<  siftData1.numPts << " " << siftData2.numPts << std::endl;
     std::cout << "Number of matching features: " << numFit << " " << numMatches << " " << 100.0f*numFit/std::min(siftData1.numPts, siftData2.numPts) << "% " << initBlur << " " << thresh << std::endl;
     //}
-  
-  // Print out and store summary data
-  PrintMatchData(siftData1, siftData2, img1);
-  cv::imwrite("data/limg_pts.pgm", limg);
 
-  //MatchAll(siftData1, siftData2, homography);
-  
-  // Free Sift data from device
-  FreeSiftData(siftData1);
-  FreeSiftData(siftData2);
+    // Print out and store summary data
+    PrintMatchData(siftData1, siftData2, img1);
+    cv::imwrite("data/limg_pts.pgm", limg);
+
+    //MatchAll(siftData1, siftData2, homography);
+
+    // Free Sift data from device
+    FreeSiftData(siftData1);
+    FreeSiftData(siftData2);
+    FreeSiftTempMemory(memoryTmp1);
+    FreeSiftTempMemory(memoryTmp2);
+  }
+
+  std::cout << "Multithreaded benchmark\n";
+
+  float initBlur = 1.0f;
+  float thresh = (imgSet ? 4.5f : 3.0f);
+
+  for (int i = 1; i <= 16; ++i) {
+    std::vector<float*> memoryTmp;
+    std::vector<CudaImage> imgs;
+    std::vector<SiftData> siftData;
+    for (int j = 0; j < i; ++j) {
+      memoryTmp.push_back(AllocSiftTempMemory(w, h, 5, false));
+      CudaImage img;
+      img.Allocate(w, h, iAlignUp(w, 128), false, nullptr, (float*)limg.data);
+      imgs.push_back(std::move(img));
+      SiftData data;
+      InitSiftData(data, num_features, true, true);
+      siftData.push_back(data);
+    }
+    tbb::task_scheduler_init scheduler{i};
+    std::atomic<int> ctr{0};
+
+    constexpr int iterations = 1000;
+
+    auto bench_start = std::chrono::high_resolution_clock::now();
+    tbb::parallel_for(0, iterations, [&siftData, &imgs, &memoryTmp, &ctr,
+                                initBlur, thresh, i](const auto &r) {
+      int tid = ctr++ % i;
+      imgs[tid].Download();
+      ExtractSift(siftData[tid], imgs[tid], 5, initBlur, thresh, 0.0f, false, memoryTmp[tid]);
+    });
+    auto bench_end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> bench_ms =
+        bench_end - bench_start;
+    std::cout << i << " threads: " << bench_ms.count() << " ms, "
+              << iterations * 1000. / bench_ms.count() << " fps\n";
+    for (int j = 0; j < i; ++j) {
+      FreeSiftData(siftData[j]);
+      FreeSiftTempMemory(memoryTmp[j]);
+    }
+  }
 }
 
 void MatchAll(SiftData &siftData1, SiftData &siftData2, float *homography)
@@ -117,8 +189,8 @@ void MatchAll(SiftData &siftData1, SiftData &siftData2, float *homography)
     for (int j=0;j<numPts2;j++) {
       float *data2 = sift2[j].data;
       float sum = 0.0f;
-      for (int k=0;k<128;k++) 
-	sum += data1[k]*data2[k];    
+      for (int k=0;k<128;k++)
+	sum += data1[k]*data2[k];
       float den = homography[6]*sift1[i].xpos + homography[7]*sift1[i].ypos + homography[8];
       float dx = (homography[0]*sift1[i].xpos + homography[1]*sift1[i].ypos + homography[2]) / den - sift2[j].xpos;
       float dy = (homography[3]*sift1[i].xpos + homography[4]*sift1[i].ypos + homography[5]) / den - sift2[j].ypos;
@@ -128,7 +200,7 @@ void MatchAll(SiftData &siftData1, SiftData &siftData2, float *homography)
       if (err<100.0f || j==sift1[i].match) { // 100.0
 	if (j==sift1[i].match && err<100.0f)
 	  std::cout << " *";
-	else if (j==sift1[i].match) 
+	else if (j==sift1[i].match)
 	  std::cout << " -";
 	else if (err<100.0f)
 	  std::cout << " +";
@@ -161,7 +233,7 @@ void PrintMatchData(SiftData &siftData1, SiftData &siftData2, CudaImage &img)
   int w = img.width;
   int h = img.height;
   std::cout << std::setprecision(3);
-  for (int j=0;j<numPts;j++) { 
+  for (int j=0;j<numPts;j++) {
     int k = sift1[j].match;
     if (sift1[j].match_error<5) {
       float dx = sift2[k].xpos - sift1[j].xpos;
@@ -190,10 +262,10 @@ void PrintMatchData(SiftData &siftData1, SiftData &siftData2, CudaImage &img)
     int s = std::min(x, std::min(y, std::min(w-x-2, std::min(h-y-2, (int)(1.41*sift1[j].scale)))));
     int p = y*w + x;
     p += (w+1);
-    for (int k=0;k<s;k++) 
+    for (int k=0;k<s;k++)
       h_img[p-k] = h_img[p+k] = h_img[p-k*w] = h_img[p+k*w] = 0.0f;
     p -= (w+1);
-    for (int k=0;k<s;k++) 
+    for (int k=0;k<s;k++)
       h_img[p-k] = h_img[p+k] = h_img[p-k*w] =h_img[p+k*w] = 255.0f;
   }
   std::cout << std::setprecision(6);
