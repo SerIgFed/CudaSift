@@ -4,7 +4,7 @@
 #include "cudaImage.h"
 #include <vector>
 
-typedef struct {
+struct SiftPoint {
   float xpos;
   float ypos;   
   float scale;
@@ -18,11 +18,18 @@ typedef struct {
   float match_ypos;
   float match_error;
   float subsampling;
-  float empty[3];
-  float data[128];
-} SiftPoint;
+  alignas(16) float data[128];
+};
 
-typedef struct {
+struct SiftData {
+  explicit SiftData(int num = 1024, bool host = false, bool dev = true,
+                    cudaStream_t stream = 0);
+  ~SiftData();
+  SiftData(const SiftData &) = delete;
+  SiftData &operator=(const SiftData &) = delete;
+  SiftData(SiftData &&other) noexcept;
+  SiftData &operator=(SiftData &&other) noexcept;
+
   int numPts;         // Number of available Sift points
   int maxPts;         // Number of allocated Sift points
 #ifdef MANAGEDMEM
@@ -30,9 +37,9 @@ typedef struct {
 #else
   SiftPoint *h_data;  // Host (CPU) data
   SiftPoint *d_data;  // Device (GPU) data
-#endif
   cudaStream_t stream;
-} SiftData;
+#endif
+};
 
 class TempMemory {
 public:
@@ -64,8 +71,6 @@ inline void ExtractSift(SiftData &siftData, const CudaImage &img, int numOctaves
   TempMemory tmp(img.width, img.height, numOctaves, scaleUp);
   ExtractSift(siftData, img, numOctaves, initBlur, thresh, lowestScale, scaleUp, tmp);
 }
-void InitSiftData(SiftData &data, int num = 1024, bool host = false, bool dev = true, cudaStream_t stream = 0);
-void FreeSiftData(SiftData &data);
 void PrintSiftData(SiftData &data);
 double MatchSiftData(SiftData &data1, SiftData &data2);
 double FindHomography(SiftData &data,  float *homography, int *numMatches, int numLoops = 1000, float minScore = 0.85f, float maxAmbiguity = 0.95f, float thresh = 5.0f);

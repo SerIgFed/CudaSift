@@ -66,11 +66,10 @@ int main(int argc, char **argv)
     img2.Download();
 
     // Extract Sift features from images
-    SiftData siftData1, siftData2;
+    SiftData siftData1(num_features, true, true, stream1),
+             siftData2(num_features, true, true, stream2);
     float initBlur = 1.0f;
     float thresh = (imgSet ? 4.5f : 3.0f);
-    InitSiftData(siftData1, num_features, true, true, stream1);
-    InitSiftData(siftData2, num_features, true, true, stream2);
 
     // A bit of benchmarking
     // for (float thresh1=1.00f;thresh1<=4.01f;thresh1+=0.50f) {
@@ -121,8 +120,6 @@ int main(int argc, char **argv)
     //MatchAll(siftData1, siftData2, homography);
 
     // Free Sift data from device
-    FreeSiftData(siftData1);
-    FreeSiftData(siftData2);
     cudaStreamDestroy(stream1);
     cudaStreamDestroy(stream2);
   }
@@ -145,9 +142,8 @@ int main(int argc, char **argv)
       CudaImage img;
       img.Allocate(w, h, iAlignUp(w, 128), false, nullptr, (float*)limg.data, stream);
       imgs.push_back(std::move(img));
-      SiftData data;
-      InitSiftData(data, num_features, true, true, stream);
-      siftData.push_back(data);
+      SiftData data(num_features, true, true, stream);
+      siftData.push_back(std::move(data));
     }
     tbb::task_scheduler_init scheduler{i};
     std::atomic<int> ctr{0};
@@ -168,7 +164,6 @@ int main(int argc, char **argv)
     std::cout << i << " threads: " << bench_ms.count() << " ms, "
               << iterations * 1000. / bench_ms.count() << " fps\n";
     for (int j = 0; j < i; ++j) {
-      FreeSiftData(siftData[j]);
       cudaStreamDestroy(streams[j]);
     }
   }

@@ -269,39 +269,6 @@ void ExtractSiftOctave(SiftData &siftData, const CudaImage &img, int octave, flo
 #endif
 }
 
-void InitSiftData(SiftData &data, int num, bool host, bool dev, cudaStream_t stream)
-{
-  data.numPts = 0;
-  data.maxPts = num;
-  auto sz = sizeof(SiftPoint)*num;
-#ifdef MANAGEDMEM
-  safeCall(cudaMallocManaged((void **)&data.m_data, sz));
-#else
-  data.h_data = NULL;
-  if (host)
-    data.h_data = (SiftPoint *)malloc(sz);
-  data.d_data = NULL;
-  if (dev)
-    safeCall(cudaMalloc((void **)&data.d_data, sz));
-#endif
-  data.stream = stream;
-}
-
-void FreeSiftData(SiftData &data)
-{
-#ifdef MANAGEDMEM
-  safeCall(cudaFree(data.m_data));
-#else
-  if (data.d_data!=NULL)
-    safeCall(cudaFree(data.d_data));
-  data.d_data = NULL;
-  if (data.h_data!=NULL)
-    free(data.h_data);
-#endif
-  data.numPts = 0;
-  data.maxPts = 0;
-}
-
 void PrintSiftData(SiftData &data)
 {
 #ifdef MANAGEDMEM
@@ -553,3 +520,62 @@ double FindPointsMulti(const CudaImage *sources, SiftData &siftData, float thres
   return 0.0;
 }
 
+SiftData::SiftData(int num, bool host, bool dev, cudaStream_t stream_) {
+  numPts = 0;
+  maxPts = num;
+  auto sz = sizeof(SiftPoint)*num;
+#ifdef MANAGEDMEM
+  safeCall(cudaMallocManaged((void **)&m_data, sz));
+#else
+  h_data = nullptr;
+  if (host)
+    h_data = new SiftPoint[num];
+  d_data = nullptr;
+  if (dev)
+    safeCall(cudaMalloc((void **)&d_data, sz));
+  stream = stream_;
+#endif
+}
+
+SiftData::~SiftData() {
+#ifdef MANAGEDMEM
+  if (m_data!=nullptr)
+    safeCall(cudaFree(m_data));
+#else
+  if (d_data!=nullptr)
+    safeCall(cudaFree(d_data));
+  delete[] h_data;
+#endif
+}
+
+SiftData::SiftData(SiftData &&other) noexcept
+  : numPts(other.numPts), maxPts(other.maxPts),
+#ifdef MANAGEDMEM
+    m_data(other.m_data)
+#else
+    h_data(other.h_data), d_data(other.d_data), stream(other.stream)
+#endif
+{
+#ifdef MANAGEDMEM
+  other.m_data = nullptr;
+#else
+  other.d_data = nullptr;
+  other.h_data = nullptr;
+#endif
+}
+
+SiftData &SiftData::operator=(SiftData &&other) noexcept {
+  numPts = other.numPts;
+  maxPts = other.maxPts;
+#ifdef MANAGEDMEM
+  m_data = other.m_data;
+  other.m_data = nullptr;
+#else
+  h_data = other.h_data;
+  d_data = other.d_data;
+  stream = other.stream;
+  other.d_data = nullptr;
+  other.h_data = nullptr;
+#endif
+  return *this;
+}
