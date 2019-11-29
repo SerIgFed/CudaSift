@@ -186,6 +186,7 @@ void ExtractSift(SiftData &siftData, const CudaImage &img, int numOctaves, doubl
     safeCall(cudaMemcpyToSymbolAsync(d_LaplaceKernel, kernel, 8*12*16*sizeof(float), 0, cudaMemcpyHostToDevice, siftData.stream));
     ExtractSiftLoop(siftData, lowImg, numOctaves, 0.0f, thresh, lowestScale*2.0f, 1.0f, tempMemory);
     safeCall(cudaMemcpyAsync(&siftData.numPts, &siftData.d_PointCounter[2*numOctaves], sizeof(int), cudaMemcpyDeviceToHost, siftData.stream));
+    safeCall(cudaStreamSynchronize(siftData.stream));
     siftData.numPts = (siftData.numPts<siftData.maxPts ? siftData.numPts : siftData.maxPts);
     RescalePositions(siftData, 0.5f);
 //    printf("SIFT extraction time =        %.2f ms\n", timer1.read());
