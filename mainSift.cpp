@@ -65,12 +65,6 @@ int main(int argc, char **argv)
     img1.Download();
     img2.Download();
 
-    // Extract Sift features from images
-    SiftData siftData1(num_features, true, true, stream1),
-             siftData2(num_features, true, true, stream2);
-    float initBlur = 1.0f;
-    float thresh = (imgSet ? 4.5f : 3.0f);
-
     DescriptorNormalizerData data;
     data.n_steps = 5;
     data.n_data = 1;
@@ -79,25 +73,31 @@ int main(int argc, char **argv)
     data.normalizer_steps = steps;
     data.data = dataf;
 
+    // Extract Sift features from images
+    SiftData siftData1(data, num_features, true, true, stream1),
+             siftData2(data, num_features, true, true, stream2);
+    float initBlur = 1.0f;
+    float thresh = (imgSet ? 4.5f : 3.0f);
+
     // A bit of benchmarking
     // for (float thresh1=1.00f;thresh1<=4.01f;thresh1+=0.50f) {
     TempMemory memoryTmp1(w, h, 5, false);
     TempMemory memoryTmp2(w, h, 5, false);
-    ExtractSift(siftData1, img1, 5, initBlur, thresh, data, 0.0f, false, memoryTmp1);
-    ExtractSift(siftData2, img2, 5, initBlur, thresh, data, 0.0f, false, memoryTmp2);
+    ExtractSift(siftData1, img1, 5, initBlur, thresh, 0.0f, false, memoryTmp1);
+    ExtractSift(siftData2, img2, 5, initBlur, thresh, 0.0f, false, memoryTmp2);
 
     constexpr int iterations = 1000;
 
     auto bench_start = std::chrono::high_resolution_clock::now();
     std::thread thread1([&]() {
       for (int i = 0; i < iterations; i++) {
-        ExtractSift(siftData1, img1, 5, initBlur, thresh, data, 0.0f, false,
+        ExtractSift(siftData1, img1, 5, initBlur, thresh, 0.0f, false,
                     memoryTmp1);
       }
     });
     std::thread thread2([&]() {
       for (int i = 0; i < iterations; i++) {
-        ExtractSift(siftData2, img2, 5, initBlur, thresh, data, 0.0f, false,
+        ExtractSift(siftData2, img2, 5, initBlur, thresh, 0.0f, false,
                     memoryTmp2);
       }
     });
@@ -138,6 +138,14 @@ int main(int argc, char **argv)
   float initBlur = 1.0f;
   float thresh = (imgSet ? 4.5f : 3.0f);
 
+  DescriptorNormalizerData norm_data;
+  norm_data.n_steps = 5;
+  norm_data.n_data = 1;
+  int steps[] = {1, 4, 1, 3, 0};
+  float dataf[] = {0.2f};
+  norm_data.normalizer_steps = steps;
+  norm_data.data = dataf;
+
   for (int i = 1; i <= 16; ++i) {
     std::vector<TempMemory> memoryTmp;
     std::vector<cudaStream_t> streams;
@@ -151,17 +159,9 @@ int main(int argc, char **argv)
       CudaImage img;
       img.Allocate(w, h, iAlignUp(w, 128), false, nullptr, (float*)limg.data, stream);
       imgs.push_back(std::move(img));
-      SiftData data(num_features, true, true, stream);
+      SiftData data(norm_data, num_features, true, true, stream);
       siftData.push_back(std::move(data));
     }
-
-    DescriptorNormalizerData data;
-    data.n_steps = 5;
-    data.n_data = 1;
-    int steps[] = {1, 4, 1, 3, 0};
-    float dataf[] = {0.2f};
-    data.normalizer_steps = steps;
-    data.data = dataf;
 
     tbb::task_scheduler_init scheduler{i};
     std::atomic<int> ctr{0};
@@ -172,7 +172,7 @@ int main(int argc, char **argv)
     tbb::parallel_for(0, iterations, [&](const auto &r) {
       int tid = ctr++ % i;
       imgs[tid].Download();
-      ExtractSift(siftData[tid], imgs[tid], 5, initBlur, thresh, data, 0.0f, false, memoryTmp[tid]);
+      ExtractSift(siftData[tid], imgs[tid], 5, initBlur, thresh, 0.0f, false, memoryTmp[tid]);
       cudaStreamSynchronize(streams[tid]);
     });
     auto bench_end = std::chrono::high_resolution_clock::now();

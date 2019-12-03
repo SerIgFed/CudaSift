@@ -22,7 +22,8 @@ struct SiftPoint {
 };
 
 struct SiftData {
-  explicit SiftData(int num = 1024, bool host = false, bool dev = true,
+  explicit SiftData(const struct DescriptorNormalizerData &normalizer,
+                    int num = 1024, bool host = false, bool dev = true,
                     cudaStream_t stream = 0);
   ~SiftData();
   SiftData(const SiftData &) = delete;
@@ -40,6 +41,7 @@ struct SiftData {
   cudaStream_t stream;
 #endif
   unsigned int *d_PointCounter;
+  struct DescriptorNormalizerData *d_normalizer;
 };
 
 class TempMemory {
@@ -66,7 +68,7 @@ private:
   int num_octaves;
 };
 
-typedef struct {
+struct DescriptorNormalizerData {
   /*
    * Possible normalizer steps:
    *  0. forward internal buffer to output
@@ -84,30 +86,28 @@ typedef struct {
    *
    *  Vanilla SIFT: 1, 4 (0.2), 1, 3, 0
    *  Vanilla RSIFT: 1, 4 (0.2), 2, 3, 0
-   *  ZCA-RSIFT 1, 4 (0.2), 2, 3,  5 (-mean), 6 (ZCA), 1, 3, 0
-   *  +RSIFT 1, 4 (0.2) 2, 3, 5 (-mean), 6 (ZCA), 2, 3, 7, 0
+   *  ZCA-RSIFT 1, 4 (0.2), 2, 3, 5 (-mean), 6 (ZCA), 1, 3, 0
+   *  +RSIFT 1, 4 (0.2), 2, 3, 5 (-mean), 6 (ZCA), 2, 3, 7, 0
    */
   int n_steps;
   int n_data;
   int *normalizer_steps;
   float *data;
-} DescriptorNormalizerData;
+};
 
 void InitCuda(int devNum = 0);
 
 void ExtractSift(SiftData &siftData, CudaImage &img, int numOctaves,
                  double initBlur, float thresh,
-                 const DescriptorNormalizerData &normalizer,
                  float lowestScale, bool scaleUp,
                  TempMemory &tempMemory);
 
 inline
 void ExtractSift(SiftData &siftData, CudaImage &img, int numOctaves,
                  double initBlur, float thresh,
-                 const DescriptorNormalizerData &normalizer,
                  float lowestScale = 0.0f, bool scaleUp = false) {
   TempMemory tmp(img.width, img.height, numOctaves, scaleUp);
-  ExtractSift(siftData, img, numOctaves, initBlur, thresh, normalizer,
+  ExtractSift(siftData, img, numOctaves, initBlur, thresh,
               lowestScale, scaleUp, tmp);
 }
 
