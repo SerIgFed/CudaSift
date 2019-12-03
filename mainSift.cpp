@@ -173,7 +173,6 @@ int main(int argc, char **argv)
       int tid = ctr++ % i;
       imgs[tid].Download();
       ExtractSift(siftData[tid], imgs[tid], 5, initBlur, thresh, 0.0f, false, memoryTmp[tid]);
-      cudaStreamSynchronize(streams[tid]);
     });
     auto bench_end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::milli> bench_ms =
