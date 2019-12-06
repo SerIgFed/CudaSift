@@ -1,8 +1,6 @@
 find_package(TBB REQUIRED)
 
 add_executable(cudasift_test mainSift.cpp geomFuncs.cpp)
-target_include_directories(cudasift_test PRIVATE
-                           ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 target_link_libraries(cudasift_test cudasift ${OpenCV_LIBS} TBB::tbb)
 
 install(
