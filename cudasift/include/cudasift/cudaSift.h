@@ -22,8 +22,7 @@ struct SiftPoint {
 };
 
 struct SiftData {
-  explicit SiftData(const struct DescriptorNormalizerData &normalizer,
-                    int num = 1024, bool host = false, bool dev = true,
+  explicit SiftData(int num = 1024, bool host = false, bool dev = true,
                     cudaStream_t stream = 0);
   ~SiftData();
   SiftData(const SiftData &) = delete;
@@ -40,8 +39,6 @@ struct SiftData {
   SiftPoint *d_data;  // Device (GPU) data
   cudaStream_t stream;
 #endif
-  unsigned int *d_PointCounter;
-  struct DescriptorNormalizerData *d_normalizer;
 };
 
 class TempMemory {
@@ -49,6 +46,7 @@ public:
   float *laplaceBuffer() const { return d_data; }
   CudaImage image(int octave, cudaStream_t stream = 0) const;
   cudaTextureObject_t texture(int octave) const;
+  unsigned int *pointCounter() const { return d_PointCounter; }
 
   operator bool() const { return d_data; }
   TempMemory(int width, int height, int num_octaves, bool scale_up = false);
@@ -66,6 +64,7 @@ private:
   size_t laplace_buffer_size;
   int width, height;
   int num_octaves;
+  unsigned int *d_PointCounter;
 };
 
 struct DescriptorNormalizerData {
@@ -95,19 +94,38 @@ struct DescriptorNormalizerData {
   float *data;
 };
 
+class DeviceDescriptorNormalizerData {
+public:
+  explicit DeviceDescriptorNormalizerData(const DescriptorNormalizerData &normalizer);
+  ~DeviceDescriptorNormalizerData();
+  DeviceDescriptorNormalizerData(const DeviceDescriptorNormalizerData &) = delete;
+  DeviceDescriptorNormalizerData &operator=(const DeviceDescriptorNormalizerData &) = delete;
+  DeviceDescriptorNormalizerData(DeviceDescriptorNormalizerData &&) noexcept;
+  DeviceDescriptorNormalizerData &operator=(DeviceDescriptorNormalizerData &&) noexcept;
+
+  const DescriptorNormalizerData *get() const { return d_normalizer; }
+
+private:
+  DescriptorNormalizerData *d_normalizer;
+};
+
 void InitCuda(int devNum = 0);
 
-void ExtractSift(SiftData &siftData, CudaImage &img, int numOctaves,
+void ExtractSift(SiftData &siftData,
+                 const DeviceDescriptorNormalizerData &d_normalizer,
+                 CudaImage &img, int numOctaves,
                  double initBlur, float thresh,
                  float lowestScale, bool scaleUp,
                  TempMemory &tempMemory);
 
 inline
-void ExtractSift(SiftData &siftData, CudaImage &img, int numOctaves,
+void ExtractSift(SiftData &siftData,
+                 const DeviceDescriptorNormalizerData &d_normalizer,
+                 CudaImage &img, int numOctaves,
                  double initBlur, float thresh,
                  float lowestScale = 0.0f, bool scaleUp = false) {
   TempMemory tmp(img.width, img.height, numOctaves, scaleUp);
-  ExtractSift(siftData, img, numOctaves, initBlur, thresh,
+  ExtractSift(siftData, d_normalizer, img, numOctaves, initBlur, thresh,
               lowestScale, scaleUp, tmp);
 }
 
