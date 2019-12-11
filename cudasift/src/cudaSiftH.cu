@@ -214,10 +214,13 @@ void ExtractSift(SiftData &siftData,
 #ifdef MANAGEDMEM
   safeCall(cudaDeviceSynchronize());
 #else
-  if (siftData.h_data)
-    safeCall(cudaMemcpyAsync(siftData.h_data, siftData.d_data, sizeof(SiftPoint)*siftData.numPts, cudaMemcpyDeviceToHost, siftData.stream));
+  if (siftData.h_data) {
+    safeCall(cudaMemcpyAsync(siftData.h_data, siftData.d_data,
+                             sizeof(SiftPoint) * siftData.numPts,
+                             cudaMemcpyDeviceToHost, siftData.stream));
+    safeCall(cudaStreamSynchronize(siftData.stream));
+  }
 #endif
-  safeCall(cudaStreamSynchronize(siftData.stream));
 //  double totTime = timer.read();
 //  printf("Incl prefiltering & memcpy =  %.2f ms %d\n\n", totTime, siftData.numPts);
 }
