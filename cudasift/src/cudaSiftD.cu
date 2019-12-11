@@ -405,7 +405,8 @@ ExtractSiftDescriptorsCONSTNew(cudaTextureObject_t texObj, SiftPoint *d_sift,
       float dy = tex2D<float>(texObj, xpos-sina, ypos+cosa) - 
 	tex2D<float>(texObj, xpos+sina, ypos-cosa);
       float grad = gauss[y]*gauss[tx] * __fsqrt_rn(dx*dx + dy*dy);
-      float angf = 4.0f/3.1415f*FastAtan2(dy, dx) + 4.0f;
+      float angf =
+          min(max(0.f, 4.0f / 3.1415f * FastAtan2(dy, dx) + 4.0f), 8.f - 1e-5f);
       
       int hori = (tx + 2)/4 - 1;      // Convert from (tx,y,angle) to bins      
       float horf = (tx - 1.5f)/4.0f - hori;
