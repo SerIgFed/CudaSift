@@ -325,6 +325,7 @@ __device__ void normalize(float *buffer, float *desc, int idx,
         sums[idx / 32] = sum;
       __syncthreads();
       accumulator = sqrtf(sums[0] + sums[1] + sums[2] + sums[3]);
+      __syncthreads();
     } break;
     case 2: {
       float sum = abs(buffer[idx]);
@@ -334,6 +335,7 @@ __device__ void normalize(float *buffer, float *desc, int idx,
         sums[idx / 32] = sum;
       __syncthreads();
       accumulator = sums[0] + sums[1] + sums[2] + sums[3];
+      __syncthreads();
     } break;
     case 3: {
       buffer[idx] = buffer[idx] / accumulator;
@@ -1788,14 +1790,14 @@ __global__ void LaplaceMultiMem(float *d_Image, float *d_Result, int width, int 
     for (int i=0;i<=2*LAPLACE_R;i++)
       temp[i] = data[max(0, min(yp + i - LAPLACE_R, height - 1))*pitch];
     for (int scale=0;scale<LAPLACE_S;scale++) {
-      float *buf = buff + (LAPLACE_W + 2*LAPLACE_R)*scale; 
+      float *buf = buff + (LAPLACE_W + 2*LAPLACE_R)*scale;
       float *kernel = d_LaplaceKernel + octave*12*16 + scale*16; 
       for (int i=0;i<=LAPLACE_R;i++)
-	kern[scale][i] = kernel[i];
+        kern[scale][i] = kernel[i];
       float sum = kern[scale][0]*temp[LAPLACE_R];
 #pragma unroll      
       for (int j=1;j<=LAPLACE_R;j++)
-	sum += kern[scale][j]*(temp[LAPLACE_R - j] + temp[LAPLACE_R + j]);
+        sum += kern[scale][j]*(temp[LAPLACE_R - j] + temp[LAPLACE_R + j]);
       buf[tx] = sum;
     }
   }
@@ -1807,11 +1809,11 @@ __global__ void LaplaceMultiMem(float *d_Image, float *d_Result, int width, int 
     for (int j=1;j<=LAPLACE_R;j++)
       oldRes += kern[scale][j]*(buff[tx + LAPLACE_R - j] + buff[tx + LAPLACE_R + j]); 
     for (int scale=1;scale<LAPLACE_S;scale++) {
-      float *buf = buff + (LAPLACE_W + 2*LAPLACE_R)*scale; 
+      float *buf = buff + (LAPLACE_W + 2*LAPLACE_R)*scale;
       float res = kern[scale][0]*buf[tx + LAPLACE_R];
 #pragma unroll
       for (int j=1;j<=LAPLACE_R;j++)
-	res += kern[scale][j]*(buf[tx + LAPLACE_R - j] + buf[tx + LAPLACE_R + j]); 
+	res += kern[scale][j]*(buf[tx + LAPLACE_R - j] + buf[tx + LAPLACE_R + j]);
       d_Result[(scale-1)*height*pitch + yp*pitch + xp] = res - oldRes;
       oldRes = res;
     }
