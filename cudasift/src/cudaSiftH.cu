@@ -25,7 +25,7 @@ void InitCuda(int devNum)
     return;
   }
   devNum = std::min(nDevices-1, devNum);
-  deviceInit(devNum);  
+  deviceInit(devNum);
   cudaDeviceProp prop;
   cudaGetDeviceProperties(&prop, devNum);
   printf("Device Number: %d\n", devNum);
@@ -47,16 +47,24 @@ void forOctaves(int width, int height, int num_octaves, T &&cb) {
   }
 }
 
+void TempMemory::setSize(int w, int h) {
+  restrict_width = w;
+  restrict_height = h;
+}
+
 CudaImage TempMemory::image(int octave, cudaStream_t stream) const {
   CudaImage subImg;
   float *img_offset = imageBuffer();
+  int rw = restrict_width, rh = restrict_height;
   forOctaves(width, height, num_octaves,
-             [this, &subImg, &img_offset, &octave, &stream](int i, int w, int h, int p) {
+             [&](int i, int w, int h, int p) {
                if (i == num_octaves - octave) {
-                 subImg.Allocate(w, h, p, false, img_offset, nullptr, stream);
+                 subImg.Allocate(rw, rh, p, false, img_offset, nullptr, stream);
                  return false;
                }
                img_offset += h * p;
+               rw /= 2;
+               rh /= 2;
                return true;
              });
   return subImg;
@@ -69,6 +77,7 @@ cudaTextureObject_t TempMemory::texture(int octave) const {
 TempMemory::TempMemory(int width_, int height_, int num_octaves_, bool scale_up)
     : width( width_ *(scale_up ? 2 : 1)),
       height(height_*(scale_up ? 2 : 1)),
+      restrict_width(width), restrict_height(height),
       num_octaves(num_octaves_) {
 #ifdef VERBOSE
   TimerGPU timer(0);
@@ -128,6 +137,7 @@ TempMemory::TempMemory(TempMemory &&other) noexcept
     : textures(std::move(other.textures)), d_data(other.d_data),
       laplace_buffer_size(other.laplace_buffer_size),
       width(other.width), height(other.height),
+      restrict_width(other.restrict_width), restrict_height(other.restrict_height),
       num_octaves(other.num_octaves),
       d_PointCounter(other.d_PointCounter) {
   other.d_PointCounter = nullptr;
@@ -135,15 +145,17 @@ TempMemory::TempMemory(TempMemory &&other) noexcept
 }
 
 TempMemory &TempMemory::operator =(TempMemory &&other) noexcept {
-  for (auto tex : textures)
-    safeCall(cudaDestroyTextureObject(tex));
-  safeCall(cudaFree(d_data));
+  if (this == &other)
+    return *this;
+  this->~TempMemory();
 
   textures = std::move(other.textures);
   d_data = other.d_data;
   laplace_buffer_size = other.laplace_buffer_size;
   width = other.width;
   height = other.height;
+  restrict_width = other.restrict_width;
+  restrict_height = other.restrict_height;
   num_octaves = other.num_octaves;
   other.d_data = nullptr;
   d_PointCounter = other.d_PointCounter;
@@ -198,7 +210,7 @@ void ExtractSift(SiftData &siftData,
 //    printf("SIFT extraction time =        %.2f ms %d\n", timer1.read(), siftData.numPts);
   } else {
     CudaImage upImg;
-    upImg.Allocate(width, height, iAlignUp(width, 128), false, tempMemory.laplaceBuffer(), nullptr, siftData.stream);
+    upImg.Allocate(width, height, lowImg.pitch, false, tempMemory.laplaceBuffer(), nullptr, siftData.stream);
 //    TimerGPU timer1(siftData.stream);
     ScaleUp(siftData, upImg, img);
     LowPass(siftData, lowImg, upImg, max(initBlur, 0.001f));
@@ -210,7 +222,7 @@ void ExtractSift(SiftData &siftData,
     siftData.numPts = (siftData.numPts<siftData.maxPts ? siftData.numPts : siftData.maxPts);
     RescalePositions(siftData, 0.5f);
 //    printf("SIFT extraction time =        %.2f ms\n", timer1.read());
-  } 
+  }
 #ifdef MANAGEDMEM
   safeCall(cudaDeviceSynchronize());
 #else
@@ -261,9 +273,9 @@ void ExtractSiftOctave(SiftData &siftData, const CudaImage &img,
   TimerGPU timer0;
 #endif
   CudaImage diffImg[nd];
-  int w = img.width; 
+  int w = img.width;
   int h = img.height;
-  int p = iAlignUp(w, 128);
+  int p = img.pitch;
   for (int i=0;i<nd-1;i++) {
     diffImg[i].Allocate(w, h, p, false, memoryTmp.laplaceBuffer() + i * p * h,
                         nullptr, siftData.stream);
@@ -284,17 +296,15 @@ void ExtractSiftOctave(SiftData &siftData, const CudaImage &img,
 #endif
   ComputeOrientations(texObj, img, siftData, memoryTmp, octave);
   ExtractSiftDescriptors(texObj, siftData, memoryTmp, d_normalizer, subsampling, octave);
-  //OrientAndExtract(texObj, siftData, subsampling, octave); 
-  
-  safeCall(cudaDestroyTextureObject(texObj));
+  //OrientAndExtract(texObj, siftData, subsampling, octave);
 #ifdef VERBOSE
   double gpuTimeSift = timer4.read();
   double totTime = timer0.read();
   printf("GPU time : %.2f ms + %.2f ms + %.2f ms = %.2f ms\n", totTime-gpuTimeDoG-gpuTimeSift, gpuTimeDoG, gpuTimeSift, totTime);
   safeCall(cudaMemcpy(&totPts, &tempMemory.pointCounter()[2*octave+1], sizeof(int), cudaMemcpyDeviceToHost));
   totPts = (totPts<siftData.maxPts ? totPts : siftData.maxPts);
-  if (totPts>0) 
-    printf("           %.2f ms / DoG,  %.4f ms / Sift,  #Sift = %d\n", gpuTimeDoG/NUM_SCALES, gpuTimeSift/(totPts-fstPts), totPts-fstPts); 
+  if (totPts>0)
+    printf("           %.2f ms / DoG,  %.4f ms / Sift,  #Sift = %d\n", gpuTimeDoG/NUM_SCALES, gpuTimeSift/(totPts-fstPts), totPts-fstPts);
 #endif
 }
 
@@ -320,9 +330,9 @@ void PrintSiftData(SiftData &data)
     printf("score        = %.2f\n", h_data[i].score);
     auto siftData = (float*)&h_data[i].data;
     for (int j=0;j<8;j++) {
-      if (j==0) 
+      if (j==0)
 	printf("data = ");
-      else 
+      else
 	printf("       ");
       for (int k=0;k<16;k++)
 	if (siftData[j+8*k]<0.05)
@@ -351,11 +361,11 @@ double ScaleDown(const SiftData &siftData, const CudaImage &res, const CudaImage
     float h_Kernel[5];
     float kernelSum = 0.0f;
     for (int j=0;j<5;j++) {
-      h_Kernel[j] = (float)expf(-(double)(j-2)*(j-2)/2.0/variance);      
+      h_Kernel[j] = (float)expf(-(double)(j-2)*(j-2)/2.0/variance);
       kernelSum += h_Kernel[j];
     }
     for (int j=0;j<5;j++)
-      h_Kernel[j] /= kernelSum;  
+      h_Kernel[j] /= kernelSum;
     safeCall(cudaMemcpyToSymbolAsync(d_ScaleDownKernel, h_Kernel, sizeof(h_Kernel), 0, cudaMemcpyHostToDevice, siftData.stream));
     oldVariance = variance;
     printf("Scale kernel initialized for %f variance. This operation is not thread-safe!\n", variance);
@@ -384,11 +394,11 @@ double ScaleUp(const SiftData &siftData, const CudaImage &res, const CudaImage &
   ScaleUp<<<blocks, threads, 0, siftData.stream>>>(res.d_data, src.d_data, src.width, src.pitch, src.height, res.pitch);
   checkMsg("ScaleUp() execution failed\n");
   return 0.0;
-}   
+}
 
 double ComputeOrientations(cudaTextureObject_t texObj, const CudaImage &src, SiftData &siftData, const TempMemory &tempMemory, int octave)
 {
-  dim3 blocks(512); 
+  dim3 blocks(512);
 #ifdef MANAGEDMEM
   ComputeOrientationsCONST<<<blocks, threads, 0, siftData.stream>>>(texObj, siftData.m_data, octave);
 #else
@@ -396,7 +406,7 @@ double ComputeOrientations(cudaTextureObject_t texObj, const CudaImage &src, Sif
   dim3 threads(11*11);
   ComputeOrientationsCONST<<<blocks, threads, 0, siftData.stream>>>(texObj, siftData.d_data, tempMemory.pointCounter(), octave);
 #else
-  dim3 threads(256); 
+  dim3 threads(256);
   ComputeOrientationsCONSTNew<<<blocks, threads, 0, siftData.stream>>>(src.d_data, src.width, src.pitch, src.height, siftData.d_data, octave);
 #endif
 #endif
@@ -408,7 +418,7 @@ double ExtractSiftDescriptors(cudaTextureObject_t texObj, SiftData &siftData,
                               const TempMemory &tempMemory,
                               const DeviceDescriptorNormalizerData &d_normalizer,
                               float subsampling, int octave) {
-  dim3 blocks(512); 
+  dim3 blocks(512);
   dim3 threads(16, 8);
 #ifdef MANAGEDMEM
   ExtractSiftDescriptorsCONST<<<blocks, threads, 0, siftData.stream>>>(
@@ -425,7 +435,7 @@ double OrientAndExtract(cudaTextureObject_t texObj, SiftData &siftData,
                         const TempMemory &tempMemory,
                         float subsampling, int octave)
 {
-  dim3 blocks(256); 
+  dim3 blocks(256);
   dim3 threads(128);
 #ifdef MANAGEDMEM
   OrientAndExtractCONST<<<blocks, threads, 0, siftData.stream>>>(texObj, siftData.m_data, subsampling, octave);
@@ -442,7 +452,7 @@ double RescalePositions(SiftData &siftData, float scale)
   dim3 threads(64);
   RescalePositions<<<blocks, threads, 0, siftData.stream>>>(siftData.d_data, siftData.numPts, scale);
   checkMsg("RescapePositions() execution failed\n");
-  return 0.0; 
+  return 0.0;
 }
 
 double LowPass(const SiftData &siftData, const CudaImage &res, const CudaImage &src, float scale)
@@ -454,10 +464,10 @@ double LowPass(const SiftData &siftData, const CudaImage &res, const CudaImage &
     float ivar2 = 1.0f/(2.0f*scale*scale);
     for (int j=-LOWPASS_R;j<=LOWPASS_R;j++) {
       kernel[j+LOWPASS_R] = (float)expf(-(double)j*j*ivar2);
-      kernelSum += kernel[j+LOWPASS_R]; 
+      kernelSum += kernel[j+LOWPASS_R];
     }
-    for (int j=-LOWPASS_R;j<=LOWPASS_R;j++) 
-      kernel[j+LOWPASS_R] /= kernelSum;  
+    for (int j=-LOWPASS_R;j<=LOWPASS_R;j++)
+      kernel[j+LOWPASS_R] /= kernelSum;
     safeCall(cudaMemcpyToSymbolAsync(d_LowPassKernel, kernel, sizeof(kernel), 0, cudaMemcpyHostToDevice, siftData.stream));
     oldScale = scale;
     printf("Low pass kernel initialized for %f scale. This operation is not thread-safe!\n", scale);
@@ -475,7 +485,7 @@ double LowPass(const SiftData &siftData, const CudaImage &res, const CudaImage &
 #endif
 //  cudaStreamSynchronize(siftData.stream);
   checkMsg("LowPass() execution failed\n");
-  return 0.0; 
+  return 0.0;
 }
 
 //==================== Multi-scale functions ===================//
@@ -493,14 +503,14 @@ void PrepareLaplaceKernels(int numOctaves, float initBlur, float *kernel)
     float var = scale*scale - initBlur*initBlur;
     for (int j=0;j<=LAPLACE_R;j++) {
       kernel[numOctaves*12*16 + 16*i + j] = (float)expf(-(double)j*j/2.0/var);
-      kernelSum += (j==0 ? 1 : 2)*kernel[numOctaves*12*16 + 16*i + j]; 
+      kernelSum += (j==0 ? 1 : 2)*kernel[numOctaves*12*16 + 16*i + j];
     }
     for (int j=0;j<=LAPLACE_R;j++)
       kernel[numOctaves*12*16 + 16*i + j] /= kernelSum;
     scale *= diffScale;
   }
 }
- 
+
 double LaplaceMulti(const SiftData &siftData, cudaTextureObject_t texObj, const CudaImage &baseImage, const CudaImage *results, int octave)
 {
   int width = results[0].width;
@@ -527,7 +537,7 @@ double LaplaceMulti(const SiftData &siftData, cudaTextureObject_t texObj, const 
   LaplaceMultiTex<<<blocks, threads, 0, siftData.stream>>>(texObj, results[0].d_data, width, pitch, height, octave);
 #endif
   checkMsg("LaplaceMulti() execution failed\n");
-  return 0.0; 
+  return 0.0;
 }
 
 double FindPointsMulti(const CudaImage *sources, SiftData &siftData,
@@ -548,7 +558,7 @@ double FindPointsMulti(const CudaImage *sources, SiftData &siftData,
 #endif
 #if 1
   dim3 blocks(iDivUp(w, MINMAX_W)*NUM_SCALES, iDivUp(h, MINMAX_H));
-  dim3 threads(MINMAX_W + 2); 
+  dim3 threads(MINMAX_W + 2);
 #ifdef MANAGEDMEM
   FindPointsMulti<<<blocks, threads, 0, siftData.stream>>>(sources->d_data, siftData.m_data, w, p, h, subsampling, lowestScale, thresh, factor, edgeLimit, octave);
 #else

@@ -55,6 +55,7 @@ public:
   TempMemory(TempMemory &&other) noexcept;
   TempMemory &operator =(TempMemory &&other) noexcept;
   ~TempMemory();
+  void setSize(int w, int h);
 
 private:
   float *imageBuffer() const { return d_data + laplace_buffer_size; }
@@ -63,6 +64,7 @@ private:
   float *d_data = nullptr;
   size_t laplace_buffer_size;
   int width, height;
+  int restrict_width, restrict_height;
   int num_octaves;
   unsigned int *d_PointCounter;
 };
