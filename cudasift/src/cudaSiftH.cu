@@ -172,7 +172,7 @@ TempMemory::~TempMemory() {
 
 void ExtractSift(SiftData &siftData,
                  const DeviceDescriptorNormalizerData &d_normalizer,
-                 CudaImage &img, int numOctaves, double initBlur, float thresh,
+                 const CudaImage &img, int numOctaves, double initBlur, float thresh,
                  float lowestScale, bool scaleUp, TempMemory &tempMemory) {
 //  TimerGPU timer(siftData.stream);
   safeCall(cudaMemsetAsync(tempMemory.pointCounter(), 0, (8*2+1)*sizeof(int), siftData.stream));

@@ -115,7 +115,7 @@ void InitCuda(int devNum = 0);
 
 void ExtractSift(SiftData &siftData,
                  const DeviceDescriptorNormalizerData &d_normalizer,
-                 CudaImage &img, int numOctaves,
+                 const CudaImage &img, int numOctaves,
                  double initBlur, float thresh,
                  float lowestScale, bool scaleUp,
                  TempMemory &tempMemory);
@@ -123,7 +123,7 @@ void ExtractSift(SiftData &siftData,
 inline
 void ExtractSift(SiftData &siftData,
                  const DeviceDescriptorNormalizerData &d_normalizer,
-                 CudaImage &img, int numOctaves,
+                 const CudaImage &img, int numOctaves,
                  double initBlur, float thresh,
                  float lowestScale = 0.0f, bool scaleUp = false) {
   TempMemory tmp(img.width, img.height, numOctaves, scaleUp);
