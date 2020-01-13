@@ -84,21 +84,21 @@ int main(int argc, char **argv)
     // for (float thresh1=1.00f;thresh1<=4.01f;thresh1+=0.50f) {
     TempMemory memoryTmp1(w, h, 5, false);
     TempMemory memoryTmp2(w, h, 5, false);
-    ExtractSift(siftData1, d_normalizer, img1, 5, initBlur, thresh, 0.0f, false, memoryTmp1);
-    ExtractSift(siftData2, d_normalizer, img2, 5, initBlur, thresh, 0.0f, false, memoryTmp2);
+    ExtractSift(siftData1, d_normalizer, img1, 5, thresh, 0.0f, false, memoryTmp1);
+    ExtractSift(siftData2, d_normalizer, img2, 5, thresh, 0.0f, false, memoryTmp2);
 
     constexpr int iterations = 1000;
 
     auto bench_start = std::chrono::high_resolution_clock::now();
     std::thread thread1([&]() {
       for (int i = 0; i < iterations; i++) {
-        ExtractSift(siftData1, d_normalizer, img1, 5, initBlur, thresh, 0.0f, false,
+        ExtractSift(siftData1, d_normalizer, img1, 5, thresh, 0.0f, false,
                     memoryTmp1);
       }
     });
     std::thread thread2([&]() {
       for (int i = 0; i < iterations; i++) {
-        ExtractSift(siftData2, d_normalizer, img2, 5, initBlur, thresh, 0.0f, false,
+        ExtractSift(siftData2, d_normalizer, img2, 5, thresh, 0.0f, false,
                     memoryTmp2);
       }
     });
@@ -171,7 +171,7 @@ int main(int argc, char **argv)
     tbb::parallel_for(0, iterations, [&](const auto &r) {
       int tid = ctr++ % i;
       imgs[tid].Download();
-      ExtractSift(siftData[tid], d_normalizer, imgs[tid], 5, initBlur, thresh, 0.0f, false, memoryTmp[tid]);
+      ExtractSift(siftData[tid], d_normalizer, imgs[tid], 5, thresh, 0.0f, false, memoryTmp[tid]);
     });
     auto bench_end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::milli> bench_ms =

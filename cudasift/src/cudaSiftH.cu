@@ -98,7 +98,7 @@ CudaImage TempMemory::image(int octave, cudaStream_t stream) const {
   float *img_offset = imageBuffer();
   int rw = restrict_width, rh = restrict_height;
   forOctaves(width, height, num_octaves,
-             [&](int i, int w, int h, int p) {
+             [&](int i, int, int h, int p) {
                if (i == num_octaves - octave) {
                  subImg.Allocate(rw, rh, p, false, img_offset, nullptr, stream);
                  return false;
@@ -213,7 +213,7 @@ TempMemory::~TempMemory() {
 
 void ExtractSift(SiftData &siftData,
                  const DeviceDescriptorNormalizerData &d_normalizer,
-                 const CudaImage &img, int numOctaves, double initBlur, float thresh,
+                 const CudaImage &img, int numOctaves, float thresh,
                  float lowestScale, bool scaleUp, TempMemory &tempMemory) {
 //  TimerGPU timer(siftData.stream);
   safeCall(cudaMemsetAsync(tempMemory.pointCounter(), 0, (8*2+1)*sizeof(int), siftData.stream));
@@ -311,13 +311,13 @@ void ExtractSiftOctave(SiftData &siftData, const CudaImage &img,
 #endif
   float baseBlur = pow(2.0f, -1.0f/NUM_SCALES);
   float diffScale = pow(2.0f, 1.0f/NUM_SCALES);
-  LaplaceMulti(siftData, texObj, img, diffImg, octave);
+  LaplaceMulti(siftData, img, diffImg, octave);
   FindPointsMulti(diffImg, siftData, memoryTmp, thresh, 10.0f, 1.0f/NUM_SCALES, lowestScale/subsampling, subsampling, octave);
 #ifdef VERBOSE
   double gpuTimeDoG = timer1.read();
   TimerGPU timer4;
 #endif
-  ComputeOrientations(texObj, img, siftData, memoryTmp, octave);
+  ComputeOrientations(texObj, siftData, memoryTmp, octave);
   ExtractSiftDescriptors(texObj, siftData, memoryTmp, d_normalizer, subsampling, octave);
   //OrientAndExtract(texObj, siftData, subsampling, octave);
 #ifdef VERBOSE
@@ -405,7 +405,7 @@ double ScaleUp(const SiftData &siftData, const CudaImage &res, const CudaImage &
   return 0.0;
 }
 
-double ComputeOrientations(cudaTextureObject_t texObj, const CudaImage &src, SiftData &siftData, const TempMemory &tempMemory, int octave)
+double ComputeOrientations(cudaTextureObject_t texObj, SiftData &siftData, const TempMemory &tempMemory, int octave)
 {
   dim3 blocks(512);
 #ifdef MANAGEDMEM
@@ -505,7 +505,7 @@ void PrepareLaplaceKernels(int numOctaves, float initBlur, float *kernel)
   }
 }
 
-double LaplaceMulti(const SiftData &siftData, cudaTextureObject_t texObj, const CudaImage &baseImage, const CudaImage *results, int octave)
+double LaplaceMulti(const SiftData &siftData, const CudaImage &baseImage, const CudaImage *results, int octave)
 {
   int width = results[0].width;
   int pitch = results[0].pitch;

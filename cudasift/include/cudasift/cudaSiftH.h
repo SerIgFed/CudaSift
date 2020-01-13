@@ -18,7 +18,7 @@ void ExtractSiftOctave(SiftData &siftData, const CudaImage &img,
                        float subsampling, TempMemory &memoryTmp);
 double ScaleDown(const SiftData &siftData, const CudaImage &res, const CudaImage &src);
 double ScaleUp(const SiftData &siftData, const CudaImage &res, const CudaImage &src);
-double ComputeOrientations(cudaTextureObject_t texObj, const CudaImage &src, SiftData &siftData,
+double ComputeOrientations(cudaTextureObject_t texObj, SiftData &siftData,
                            const TempMemory &tempMemory, int octave);
 double ExtractSiftDescriptors(cudaTextureObject_t texObj, SiftData &siftData,
                               const TempMemory &tempMemory,
@@ -29,7 +29,7 @@ double OrientAndExtract(cudaTextureObject_t texObj, SiftData &siftData,
 double RescalePositions(SiftData &siftData, float scale);
 double LowPass(const SiftData &siftData, const CudaImage &res, const CudaImage &src);
 void PrepareLaplaceKernels(int numOctaves, float initBlur, float *kernel);
-double LaplaceMulti(const SiftData &siftData, cudaTextureObject_t texObj, const CudaImage &baseImage, const CudaImage *results, int octave);
+double LaplaceMulti(const SiftData &siftData, const CudaImage &baseImage, const CudaImage *results, int octave);
 double FindPointsMulti(const CudaImage *sources, SiftData &siftData,
                        const TempMemory &tempMemory,
                        float thresh, float edgeLimit, float factor,
