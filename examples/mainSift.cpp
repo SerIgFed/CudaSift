@@ -49,10 +49,12 @@ int main(int argc, char **argv)
   std::cout << "Image size = (" << w << "," << h << ")" << std::endl;
 
   constexpr int num_features = 0x8000;
+  float initBlur = 1.0f;
+  float thresh = (imgSet ? 4.5f : 3.0f);
 
   // Initial Cuda images and download images to device
   std::cout << "Initializing data..." << std::endl;
-  InitCuda(devNum);
+  InitCuda(num_features, 5, initBlur, devNum);
   {
     CudaImage img1, img2;
     cudaStream_t stream1, stream2;
@@ -77,8 +79,6 @@ int main(int argc, char **argv)
     // Extract Sift features from images
     SiftData siftData1(num_features, true, true, stream1),
              siftData2(num_features, true, true, stream2);
-    float initBlur = 1.0f;
-    float thresh = (imgSet ? 4.5f : 3.0f);
 
     // A bit of benchmarking
     // for (float thresh1=1.00f;thresh1<=4.01f;thresh1+=0.50f) {
@@ -135,9 +135,6 @@ int main(int argc, char **argv)
   }
 
   std::cout << "Multithreaded benchmark\n";
-
-  float initBlur = 1.0f;
-  float thresh = (imgSet ? 4.5f : 3.0f);
 
   DescriptorNormalizerData norm_data;
   norm_data.n_steps = 5;

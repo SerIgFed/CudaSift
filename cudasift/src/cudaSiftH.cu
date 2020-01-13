@@ -16,7 +16,7 @@
 
 #include "cudaSiftD.cu"
 
-void InitCuda(int devNum)
+void InitCuda(int maxPts, int numOctaves, float initBlur, int devNum)
 {
   int nDevices;
   cudaGetDeviceCount(&nDevices);
@@ -33,7 +33,48 @@ void InitCuda(int devNum)
   printf("  Memory Clock Rate (MHz): %d\n", prop.memoryClockRate/1000);
   printf("  Memory Bus Width (bits): %d\n", prop.memoryBusWidth);
   printf("  Peak Memory Bandwidth (GB/s): %.1f\n\n",
-	 2.0*prop.memoryClockRate*(prop.memoryBusWidth/8)/1.0e6);
+     2.0*prop.memoryClockRate*(prop.memoryBusWidth/8)/1.0e6);
+  printf("Initializing constant memory. \n"
+         "This operation shouldn't be performed while SIFT extraction "
+         "is running.\n");
+  float variance = 0.5f;
+  float scale = max(initBlur, 0.001f);
+  {
+    safeCall(cudaMemcpyToSymbol(d_MaxNumPoints, &maxPts,
+                                sizeof(int), 0, cudaMemcpyHostToDevice));
+  }
+  {
+    float kernel[8*12*16];
+    PrepareLaplaceKernels(numOctaves, 0.0f, kernel);
+    safeCall(cudaMemcpyToSymbol(
+        d_LaplaceKernel, kernel, sizeof(kernel), 0,
+        cudaMemcpyHostToDevice));
+  }
+  {
+    float h_Kernel[5];
+    float kernelSum = 0.0f;
+    for (int j=0;j<5;j++) {
+      h_Kernel[j] = (float)expf(-(double)(j-2)*(j-2)/2.0/variance);
+      kernelSum += h_Kernel[j];
+    }
+    for (int j=0;j<5;j++)
+      h_Kernel[j] /= kernelSum;
+    safeCall(cudaMemcpyToSymbol(d_ScaleDownKernel, h_Kernel, sizeof(h_Kernel),
+                                0, cudaMemcpyHostToDevice));
+  }
+  {
+    float kernel[2*LOWPASS_R+1];
+    float kernelSum = 0.0f;
+    float ivar2 = 1.0f/(2.0f*scale*scale);
+    for (int j=-LOWPASS_R;j<=LOWPASS_R;j++) {
+      kernel[j+LOWPASS_R] = (float)expf(-(double)j*j*ivar2);
+      kernelSum += kernel[j+LOWPASS_R];
+    }
+    for (int j=-LOWPASS_R;j<=LOWPASS_R;j++)
+      kernel[j+LOWPASS_R] /= kernelSum;
+    safeCall(cudaMemcpyToSymbol(d_LowPassKernel, kernel, sizeof(kernel),
+                                0, cudaMemcpyHostToDevice));
+  }
 }
 
 template <typename T>
@@ -176,31 +217,13 @@ void ExtractSift(SiftData &siftData,
                  float lowestScale, bool scaleUp, TempMemory &tempMemory) {
 //  TimerGPU timer(siftData.stream);
   safeCall(cudaMemsetAsync(tempMemory.pointCounter(), 0, (8*2+1)*sizeof(int), siftData.stream));
-  static int maxPts = 0;
-  if (siftData.maxPts != maxPts) {
-    safeCall(cudaMemcpyToSymbolAsync(d_MaxNumPoints, &siftData.maxPts,
-                                     sizeof(int), 0, cudaMemcpyHostToDevice,
-                                     siftData.stream));
-    maxPts = siftData.maxPts;
-    printf("Max points set to %d. This operation is not thread-safe!\n", maxPts);
-  }
-  static int numOctavesOld = 0;
-  if (numOctaves != numOctavesOld) {
-    float kernel[8*12*16];
-    PrepareLaplaceKernels(numOctaves, 0.0f, kernel);
-    safeCall(cudaMemcpyToSymbolAsync(
-        d_LaplaceKernel, kernel, sizeof(kernel), 0,
-        cudaMemcpyHostToDevice, siftData.stream));
-    numOctavesOld = numOctaves;
-    printf("Laplace kernel initialized for %d octaves. This operation is not thread-safe!\n", numOctaves);
-  }
 
   int width = img.width*(scaleUp ? 2 : 1);
   int height = img.height*(scaleUp ? 2 : 1);
 
   CudaImage lowImg = tempMemory.image(numOctaves, siftData.stream);
   if (!scaleUp) {
-    LowPass(siftData, lowImg, img, max(initBlur, 0.001f));
+    LowPass(siftData, lowImg, img);
 //    TimerGPU timer1(siftData.stream);
     ExtractSiftLoop(siftData, lowImg, d_normalizer, numOctaves, 0.0f, thresh, lowestScale, 1.0f, tempMemory);
     safeCall(cudaMemcpyAsync(&siftData.numPts, &tempMemory.pointCounter()[2*numOctaves],
@@ -213,7 +236,7 @@ void ExtractSift(SiftData &siftData,
     upImg.Allocate(width, height, lowImg.pitch, false, tempMemory.laplaceBuffer(), nullptr, siftData.stream);
 //    TimerGPU timer1(siftData.stream);
     ScaleUp(siftData, upImg, img);
-    LowPass(siftData, lowImg, upImg, max(initBlur, 0.001f));
+    LowPass(siftData, lowImg, upImg);
     ExtractSiftLoop(siftData, lowImg, d_normalizer, numOctaves, 0.0f, thresh, lowestScale*2.0f,
                     1.0f, tempMemory);
     safeCall(cudaMemcpyAsync(&siftData.numPts, &tempMemory.pointCounter()[2*numOctaves],
@@ -246,7 +269,7 @@ int ExtractSiftLoop(SiftData &siftData, const CudaImage &img,
 #endif
   if (numOctaves>1) {
     CudaImage subImg = memoryTmp.image(numOctaves - 1, siftData.stream);
-    ScaleDown(siftData, subImg, img, 0.5f);
+    ScaleDown(siftData, subImg, img);
     float totInitBlur = (float)sqrt(initBlur*initBlur + 0.5f*0.5f) / 2.0f;
     ExtractSiftLoop(siftData, subImg, d_normalizer, numOctaves-1, totInitBlur, thresh,
                     lowestScale, subsampling*2.0f, memoryTmp);
@@ -350,25 +373,11 @@ void PrintSiftData(SiftData &data)
 // Host side master functions
 ///////////////////////////////////////////////////////////////////////////////
 
-double ScaleDown(const SiftData &siftData, const CudaImage &res, const CudaImage &src, float variance)
+double ScaleDown(const SiftData &siftData, const CudaImage &res, const CudaImage &src)
 {
-  static float oldVariance = -1.0f;
   if (res.d_data==NULL || src.d_data==NULL) {
     printf("ScaleDown: missing data\n");
     return 0.0;
-  }
-  if (oldVariance!=variance) {
-    float h_Kernel[5];
-    float kernelSum = 0.0f;
-    for (int j=0;j<5;j++) {
-      h_Kernel[j] = (float)expf(-(double)(j-2)*(j-2)/2.0/variance);
-      kernelSum += h_Kernel[j];
-    }
-    for (int j=0;j<5;j++)
-      h_Kernel[j] /= kernelSum;
-    safeCall(cudaMemcpyToSymbolAsync(d_ScaleDownKernel, h_Kernel, sizeof(h_Kernel), 0, cudaMemcpyHostToDevice, siftData.stream));
-    oldVariance = variance;
-    printf("Scale kernel initialized for %f variance. This operation is not thread-safe!\n", variance);
   }
 #if 0
   dim3 blocks(iDivUp(src.width, SCALEDOWN_W), iDivUp(src.height, SCALEDOWN_H));
@@ -455,23 +464,8 @@ double RescalePositions(SiftData &siftData, float scale)
   return 0.0;
 }
 
-double LowPass(const SiftData &siftData, const CudaImage &res, const CudaImage &src, float scale)
+double LowPass(const SiftData &siftData, const CudaImage &res, const CudaImage &src)
 {
-  float kernel[2*LOWPASS_R+1];
-  static float oldScale = -1.0f;
-  if (scale!=oldScale) {
-    float kernelSum = 0.0f;
-    float ivar2 = 1.0f/(2.0f*scale*scale);
-    for (int j=-LOWPASS_R;j<=LOWPASS_R;j++) {
-      kernel[j+LOWPASS_R] = (float)expf(-(double)j*j*ivar2);
-      kernelSum += kernel[j+LOWPASS_R];
-    }
-    for (int j=-LOWPASS_R;j<=LOWPASS_R;j++)
-      kernel[j+LOWPASS_R] /= kernelSum;
-    safeCall(cudaMemcpyToSymbolAsync(d_LowPassKernel, kernel, sizeof(kernel), 0, cudaMemcpyHostToDevice, siftData.stream));
-    oldScale = scale;
-    printf("Low pass kernel initialized for %f scale. This operation is not thread-safe!\n", scale);
-  }
   int width = res.width;
   int pitch = res.pitch;
   int height = res.height;

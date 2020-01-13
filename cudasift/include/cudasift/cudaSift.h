@@ -111,7 +111,7 @@ private:
   DescriptorNormalizerData *d_normalizer;
 };
 
-void InitCuda(int devNum = 0);
+void InitCuda(int maxPts, int numOctaves, float initBlur, int devNum = 0);
 
 void ExtractSift(SiftData &siftData,
                  const DeviceDescriptorNormalizerData &d_normalizer,
