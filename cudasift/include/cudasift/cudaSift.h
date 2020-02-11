@@ -26,7 +26,7 @@ struct SiftData {
                     cudaStream_t stream = 0);
   ~SiftData();
   SiftData(const SiftData &) = delete;
-  SiftData &operator=(const SiftData &) = delete;
+  SiftData &operator=(const SiftData &);
   SiftData(SiftData &&other) noexcept;
   SiftData &operator=(SiftData &&other) noexcept;
 

@@ -243,7 +243,8 @@ void ExtractSift(SiftData &siftData,
                              sizeof(int), cudaMemcpyDeviceToHost, siftData.stream));
     safeCall(cudaStreamSynchronize(siftData.stream));
     siftData.numPts = (siftData.numPts<siftData.maxPts ? siftData.numPts : siftData.maxPts);
-    RescalePositions(siftData, 0.5f);
+    if (siftData.numPts > 0)
+      RescalePositions(siftData, 0.5f);
 //    printf("SIFT extraction time =        %.2f ms\n", timer1.read());
   }
 #ifdef MANAGEDMEM
@@ -460,7 +461,7 @@ double RescalePositions(SiftData &siftData, float scale)
   dim3 blocks(iDivUp(siftData.numPts, 64));
   dim3 threads(64);
   RescalePositions<<<blocks, threads, 0, siftData.stream>>>(siftData.d_data, siftData.numPts, scale);
-  checkMsg("RescapePositions() execution failed\n");
+  checkMsg("RescalePositions() execution failed\n");
   return 0.0;
 }
 
@@ -589,6 +590,21 @@ SiftData::~SiftData() {
     safeCall(cudaFree(d_data));
   delete[] h_data;
 #endif
+}
+
+SiftData &SiftData::operator=(const SiftData &other) {
+  if (&other == this)
+    return *this;
+  if (other.maxPts > maxPts)
+    throw std::invalid_argument("Target storage is smaller than destination");
+
+  numPts = other.numPts;
+#ifndef MANAGEDMEM
+  memcpy(h_data, other.h_data, numPts*sizeof(*h_data));
+  cudaMemcpy(other.d_data, d_data, numPts*sizeof(*d_data),
+             cudaMemcpyDeviceToDevice);
+#endif
+  return *this;
 }
 
 SiftData::SiftData(SiftData &&other) noexcept
