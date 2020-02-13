@@ -322,7 +322,7 @@ __global__ void FindMaxCorr10(SiftPoint *sift1, SiftPoint *sift2, int numPts1, i
   int idx = ty*M7W + tx;
   int ix = idx%(M7W/NRX);
   int iy = idx/(M7W/NRX);
-  for (int bp2=0;bp2<numPts2 - M7H + 1;bp2+=M7H) {
+  for (int bp2=0; bp2 == 0 || bp2<numPts2 - M7H + 1; bp2+=M7H) {
     for (int j=ty;j<M7H;j+=M7H/M7R) {      
       int p2 = min(bp2 + j, numPts2 - 1);
       for (int d=tx;d<NDIM/4;d+=M7W)
