@@ -77,15 +77,14 @@ int main(int argc, char **argv)
     DeviceDescriptorNormalizerData d_normalizer(data);
 
     // Extract Sift features from images
-    SiftData siftData1(num_features, true, true, stream1),
-             siftData2(num_features, true, true, stream2);
+    DeviceSiftData siftData1(num_features), siftData2(num_features);
 
     // A bit of benchmarking
     // for (float thresh1=1.00f;thresh1<=4.01f;thresh1+=0.50f) {
     TempMemory memoryTmp1(w, h, 5, false);
     TempMemory memoryTmp2(w, h, 5, false);
-    ExtractSift(siftData1, d_normalizer, img1, 5, thresh, 0.0f, false, memoryTmp1);
-    ExtractSift(siftData2, d_normalizer, img2, 5, thresh, 0.0f, false, memoryTmp2);
+    ExtractSift(siftData1, d_normalizer, img1, 5, thresh, 0.0f, false, memoryTmp1, stream1);
+    ExtractSift(siftData2, d_normalizer, img2, 5, thresh, 0.0f, false, memoryTmp2, stream2);
 
     constexpr int iterations = 1000;
 
@@ -93,13 +92,13 @@ int main(int argc, char **argv)
     std::thread thread1([&]() {
       for (int i = 0; i < iterations; i++) {
         ExtractSift(siftData1, d_normalizer, img1, 5, thresh, 0.0f, false,
-                    memoryTmp1);
+                    memoryTmp1, stream1);
       }
     });
     std::thread thread2([&]() {
       for (int i = 0; i < iterations; i++) {
         ExtractSift(siftData2, d_normalizer, img2, 5, thresh, 0.0f, false,
-                    memoryTmp2);
+                    memoryTmp2, stream2);
       }
     });
     thread1.join();
@@ -112,19 +111,24 @@ int main(int argc, char **argv)
 
     // Match Sift features and find a homography
     for (int i=0;i<1;i++)
-      MatchSiftData(siftData1, siftData2);
+      MatchSiftData(siftData1, siftData2, stream1);
     float homography[9];
     int numMatches;
     FindHomography(siftData1, homography, &numMatches, 10000, 0.00f, 0.95f,
-                   5.0);
-    int numFit = ImproveHomography(siftData1, homography, 5, 0.00f, 0.95f, 3.0);
+                   5.0, stream1);
+    SiftData hostData1(num_features);
+    siftData1.downloadFeatures(hostData1, stream1);
+    cudaStreamSynchronize(stream1);
+    int numFit = ImproveHomography(hostData1, homography, 5, 0.00f, 0.95f, 3.0);
 
     std::cout << "Number of original features: " <<  siftData1.numPts << " " << siftData2.numPts << std::endl;
     std::cout << "Number of matching features: " << numFit << " " << numMatches << " " << 100.0f*numFit/std::min(siftData1.numPts, siftData2.numPts) << "% " << initBlur << " " << thresh << std::endl;
     //}
 
+    SiftData hostData2(num_features);
+    siftData2.downloadFeatures(hostData2);
     // Print out and store summary data
-    PrintMatchData(siftData1, siftData2, img1);
+    PrintMatchData(hostData1, hostData2, img1);
     cv::imwrite("data/limg_pts.pgm", limg);
 
     //MatchAll(siftData1, siftData2, homography);
@@ -149,7 +153,7 @@ int main(int argc, char **argv)
     std::vector<TempMemory> memoryTmp;
     std::vector<cudaStream_t> streams;
     std::vector<CudaImage> imgs;
-    std::vector<SiftData> siftData;
+    std::vector<DeviceSiftData> siftData;
     for (int j = 0; j < i; ++j) {
       memoryTmp.emplace_back(w, h, 5, false);
       cudaStream_t stream;
@@ -158,7 +162,7 @@ int main(int argc, char **argv)
       CudaImage img;
       img.Allocate(w, h, iAlignUp(w, 128), false, nullptr, (float*)limg.data, stream);
       imgs.push_back(std::move(img));
-      SiftData data(num_features, true, true, stream);
+      DeviceSiftData data(num_features);
       siftData.push_back(std::move(data));
     }
 
@@ -168,11 +172,15 @@ int main(int argc, char **argv)
     constexpr int iterations = 1000;
 
     auto bench_start = std::chrono::high_resolution_clock::now();
-    tbb::parallel_for(0, iterations, [&](const auto &r) {
+    tbb::parallel_for(0, iterations, [&](const auto &) {
       int tid = ctr++ % i;
       imgs[tid].Download();
-      ExtractSift(siftData[tid], d_normalizer, imgs[tid], 5, thresh, 0.0f, false, memoryTmp[tid]);
+      ExtractSift(siftData[tid], d_normalizer, imgs[tid], 5, thresh, 0.0f, false,
+                  memoryTmp[tid], streams[tid]);
     });
+    for (int j = 0; j < i; ++j) {
+      cudaStreamSynchronize(streams[j]);
+    }
     auto bench_end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::milli> bench_ms =
         bench_end - bench_start;

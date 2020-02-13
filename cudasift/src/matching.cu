@@ -356,7 +356,7 @@ __global__ void FindMaxCorr10(SiftPoint *sift1, SiftPoint *sift2, int numPts1, i
 	    max_score[i] = score[dy][i];     
 	    index[i] = min(bp2 + M7R*iy + dy, numPts2-1);
 	  } else if (score[dy][i]>sec_score[i])
-	    sec_score[i] = score[dy][i]; 
+	    sec_score[i] = score[dy][i];
 	}
       }
     }
@@ -369,7 +369,7 @@ __global__ void FindMaxCorr10(SiftPoint *sift1, SiftPoint *sift2, int numPts1, i
   if (idx<M7W*M7H/M7R/NRX) {
     for (int i=0;i<NRX;i++) {
       scores1[iy*M7W + (M7W/NRX)*i + ix] = max_score[i];  
-      scores2[iy*M7W + (M7W/NRX)*i + ix] = sec_score[i];  
+      scores2[iy*M7W + (M7W/NRX)*i + ix] = sec_score[i];
       indices[iy*M7W + (M7W/NRX)*i + ix] = index[i];
     }
   }
@@ -379,15 +379,16 @@ __global__ void FindMaxCorr10(SiftPoint *sift1, SiftPoint *sift2, int numPts1, i
     float max_score = scores1[tx];
     float sec_score = scores2[tx];
     int index = indices[tx];
-    for (int y=0;y<M7H/M7R;y++)
-      if (index != indices[y*M7W + tx]) {
-	if (scores1[y*M7W + tx]>max_score) {
-	  sec_score = max(max_score, sec_score);
-	  max_score = scores1[y*M7W + tx]; 
-	  index = indices[y*M7W + tx];
-	} else if (scores1[y*M7W + tx]>sec_score)
-	  sec_score = scores1[y*M7W + tx];
+    for (int y=0;y<M7H/M7R;y++) {
+      if (index != indices[y * M7W + tx]) {
+        if (scores1[y * M7W + tx] > max_score) {
+          sec_score = max(max_score, sec_score);
+          max_score = scores1[y * M7W + tx];
+          index = indices[y * M7W + tx];
+        } else if (scores1[y * M7W + tx] > sec_score)
+          sec_score = scores1[y * M7W + tx];
       }
+    }
     sift1[bp1 + tx].score = max_score;
     sift1[bp1 + tx].match = index;
     sift1[bp1 + tx].match_xpos = sift2[index].xpos;
@@ -997,7 +998,9 @@ __global__ void TestHomographies(float *d_coord, float *d_homo,
 
 //================= Host matching functions =====================//
 
-double FindHomography(SiftData &data, float *homography, int *numMatches, int numLoops, float minScore, float maxAmbiguity, float thresh)
+double FindHomography(DeviceSiftData &data, float *homography, int *numMatches,
+                      int numLoops, float minScore, float maxAmbiguity, float thresh,
+                      cudaStream_t stream)
 {
   *numMatches = 0;
   homography[0] = homography[4] = homography[8] = 1.0f;
@@ -1010,7 +1013,7 @@ double FindHomography(SiftData &data, float *homography, int *numMatches, int nu
     return 0.0f;
   SiftPoint *d_sift = data.d_data;
 #endif
-  TimerGPU timer(data.stream);
+  TimerGPU timer(stream);
   numLoops = iDivUp(numLoops,16)*16;
   int numPts = data.numPts;
   if (numPts<8)
@@ -1027,11 +1030,11 @@ double FindHomography(SiftData &data, float *homography, int *numMatches, int nu
   h_randPts = (int*)malloc(randSize);
   float *h_scores = (float *)malloc(sizeof(float)*numPtsUp);
   float *h_ambiguities = (float *)malloc(sizeof(float)*numPtsUp);
-  safeCall(cudaMemcpy2DAsync(h_scores, szFl, &d_sift[0].score, szPt, szFl, numPts, cudaMemcpyDeviceToHost, data.stream));
-  safeCall(cudaMemcpy2DAsync(h_ambiguities, szFl, &d_sift[0].ambiguity, szPt, szFl, numPts, cudaMemcpyDeviceToHost, data.stream));
+  safeCall(cudaMemcpy2DAsync(h_scores, szFl, &d_sift[0].score, szPt, szFl, numPts, cudaMemcpyDeviceToHost, stream));
+  safeCall(cudaMemcpy2DAsync(h_ambiguities, szFl, &d_sift[0].ambiguity, szPt, szFl, numPts, cudaMemcpyDeviceToHost, stream));
   int *validPts = (int *)malloc(sizeof(int)*numPts);
   int numValid = 0;
-  safeCall(cudaStreamSynchronize(data.stream));
+  safeCall(cudaStreamSynchronize(stream));
   for (int i=0;i<numPts;i++) {
     if (h_scores[i]>minScore && h_ambiguities[i]<maxAmbiguity)
       validPts[numValid++] = i;
@@ -1052,20 +1055,20 @@ double FindHomography(SiftData &data, float *homography, int *numMatches, int nu
       h_randPts[i+2*numLoops] = validPts[p3];
       h_randPts[i+3*numLoops] = validPts[p4];
     }
-    safeCall(cudaMemcpyAsync(d_randPts, h_randPts, randSize, cudaMemcpyHostToDevice, data.stream));
-    safeCall(cudaMemcpy2DAsync(&d_coord[0*numPtsUp], szFl, &d_sift[0].xpos, szPt, szFl, numPts, cudaMemcpyDeviceToDevice, data.stream));
-    safeCall(cudaMemcpy2DAsync(&d_coord[1*numPtsUp], szFl, &d_sift[0].ypos, szPt, szFl, numPts, cudaMemcpyDeviceToDevice, data.stream));
-    safeCall(cudaMemcpy2DAsync(&d_coord[2*numPtsUp], szFl, &d_sift[0].match_xpos, szPt, szFl, numPts, cudaMemcpyDeviceToDevice, data.stream));
-    safeCall(cudaMemcpy2DAsync(&d_coord[3*numPtsUp], szFl, &d_sift[0].match_ypos, szPt, szFl, numPts, cudaMemcpyDeviceToDevice, data.stream));
-    ComputeHomographies<<<numLoops/16, 16, 0, data.stream>>>(d_coord, d_randPts, d_homo, numPtsUp);
-    safeCall(cudaStreamSynchronize(data.stream));
+    safeCall(cudaMemcpyAsync(d_randPts, h_randPts, randSize, cudaMemcpyHostToDevice, stream));
+    safeCall(cudaMemcpy2DAsync(&d_coord[0*numPtsUp], szFl, &d_sift[0].xpos, szPt, szFl, numPts, cudaMemcpyDeviceToDevice, stream));
+    safeCall(cudaMemcpy2DAsync(&d_coord[1*numPtsUp], szFl, &d_sift[0].ypos, szPt, szFl, numPts, cudaMemcpyDeviceToDevice, stream));
+    safeCall(cudaMemcpy2DAsync(&d_coord[2*numPtsUp], szFl, &d_sift[0].match_xpos, szPt, szFl, numPts, cudaMemcpyDeviceToDevice, stream));
+    safeCall(cudaMemcpy2DAsync(&d_coord[3*numPtsUp], szFl, &d_sift[0].match_ypos, szPt, szFl, numPts, cudaMemcpyDeviceToDevice, stream));
+    ComputeHomographies<<<numLoops/16, 16, 0, stream>>>(d_coord, d_randPts, d_homo, numPtsUp);
+    safeCall(cudaStreamSynchronize(stream));
     checkMsg("ComputeHomographies() execution failed\n");
     dim3 blocks(1, numLoops/TESTHOMO_LOOPS);
     dim3 threads(TESTHOMO_TESTS, TESTHOMO_LOOPS);
-    TestHomographies<<<blocks, threads, 0, data.stream>>>(d_coord, d_homo, d_randPts, numPtsUp, thresh*thresh);
-    safeCall(cudaStreamSynchronize(data.stream));
+    TestHomographies<<<blocks, threads, 0, stream>>>(d_coord, d_homo, d_randPts, numPtsUp, thresh*thresh);
+    safeCall(cudaStreamSynchronize(stream));
     checkMsg("TestHomographies() execution failed\n");
-    safeCall(cudaMemcpyAsync(h_randPts, d_randPts, sizeof(int)*numLoops, cudaMemcpyDeviceToHost, data.stream));
+    safeCall(cudaMemcpyAsync(h_randPts, d_randPts, sizeof(int)*numLoops, cudaMemcpyDeviceToHost, stream));
     int maxIndex = -1, maxCount = -1;
     for (int i=0;i<numLoops;i++) 
       if (h_randPts[i]>maxCount) {
@@ -1073,8 +1076,8 @@ double FindHomography(SiftData &data, float *homography, int *numMatches, int nu
 	maxIndex = i;
       }
     *numMatches = maxCount;
-    safeCall(cudaMemcpy2DAsync(homography, szFl, &d_homo[maxIndex], sizeof(float)*numLoops, szFl, 8, cudaMemcpyDeviceToHost, data.stream));
-    safeCall(cudaStreamSynchronize(data.stream));
+    safeCall(cudaMemcpy2DAsync(homography, szFl, &d_homo[maxIndex], sizeof(float)*numLoops, szFl, 8, cudaMemcpyDeviceToHost, stream));
+    safeCall(cudaStreamSynchronize(stream));
   }
   free(validPts);
   free(h_randPts);
@@ -1089,9 +1092,9 @@ double FindHomography(SiftData &data, float *homography, int *numMatches, int nu
 }
 
 
-double MatchSiftData(SiftData &data1, SiftData &data2)
+double MatchSiftData(const DeviceSiftData &data1, const DeviceSiftData &data2, cudaStream_t stream)
 {
-//  TimerGPU timer(data1.stream);
+//  TimerGPU timer(stream);
   int numPts1 = data1.numPts;
   int numPts2 = data2.numPts;
   if (!numPts1 || !numPts2) 
@@ -1104,7 +1107,6 @@ double MatchSiftData(SiftData &data1, SiftData &data2)
     return 0.0f;
   SiftPoint *sift1 = data1.d_data;
   SiftPoint *sift2 = data2.d_data;
-  cudaStream_t stream = data1.stream;
 #endif
   
 // Original version with correlation and maximization in two different kernels
@@ -1192,13 +1194,6 @@ double MatchSiftData(SiftData &data1, SiftData &data2)
     FindMaxCorr10<<<blocksMax3, threadsMax3, 0, stream>>>(sift1, sift2, numPts1, numPts2);
   }
 #endif
-
-  if (data1.h_data!=NULL) {
-    float *h_ptr = &data1.h_data[0].score;
-    float *d_ptr = &data1.d_data[0].score;
-    safeCall(cudaMemcpy2DAsync(h_ptr, sizeof(SiftPoint), d_ptr, sizeof(SiftPoint), 5*sizeof(float), data1.numPts, cudaMemcpyDeviceToHost, stream));
-    safeCall(cudaStreamSynchronize(stream));
-  }
 
 //  double gpuTime = timer.read();
 #ifndef VERBOSE

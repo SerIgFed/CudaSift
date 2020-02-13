@@ -22,8 +22,7 @@ struct SiftPoint {
 };
 
 struct SiftData {
-  explicit SiftData(int num = 1024, bool host = false, bool dev = true,
-                    cudaStream_t stream = 0);
+  explicit SiftData(int num = 1024);
   ~SiftData();
   SiftData(const SiftData &) = delete;
   SiftData &operator=(const SiftData &);
@@ -32,12 +31,28 @@ struct SiftData {
 
   int numPts;         // Number of available Sift points
   int maxPts;         // Number of allocated Sift points
+  SiftPoint *h_data;  // Host (CPU) data
+};
+
+struct DeviceSiftData {
+  explicit DeviceSiftData(int num = 1024);
+  void uploadFeatures(const SiftData &src, cudaStream_t stream = 0);
+  void uploadMatches(const SiftData &src, cudaStream_t stream = 0);
+  void downloadFeatures(SiftData &dst, cudaStream_t stream = 0) const;
+  void downloadMatches(SiftData &dst, cudaStream_t stream = 0) const;
+
+  ~DeviceSiftData();
+  DeviceSiftData(const DeviceSiftData &) = delete;
+  DeviceSiftData &operator=(const DeviceSiftData &) = delete;
+  DeviceSiftData(DeviceSiftData &&other) noexcept;
+  DeviceSiftData &operator=(DeviceSiftData &&other) noexcept;
+
+  int numPts;         // Number of available Sift points
+  int maxPts;         // Number of allocated Sift points
 #ifdef MANAGEDMEM
   SiftPoint *m_data;  // Managed data
 #else
-  SiftPoint *h_data;  // Host (CPU) data
   SiftPoint *d_data;  // Device (GPU) data
-  cudaStream_t stream;
 #endif
 };
 
@@ -48,7 +63,7 @@ public:
   cudaTextureObject_t texture(int octave) const;
   unsigned int *pointCounter() const { return d_PointCounter; }
 
-  operator bool() const { return d_data; }
+  explicit operator bool() const { return d_data; }
   TempMemory(int width, int height, int num_octaves, bool scale_up = false);
   TempMemory(const TempMemory &other) = delete;
   TempMemory &operator =(const TempMemory &other) = delete;
@@ -113,24 +128,28 @@ private:
 
 void InitCuda(int maxPts, int numOctaves, float initBlur, int devNum = 0);
 
-void ExtractSift(SiftData &siftData,
+void ExtractSift(DeviceSiftData &siftData,
                  const DeviceDescriptorNormalizerData &d_normalizer,
                  const CudaImage &img, int numOctaves, float thresh,
                  float lowestScale, bool scaleUp,
-                 TempMemory &tempMemory);
+                 TempMemory &tempMemory, cudaStream_t stream = 0);
 
 inline
-void ExtractSift(SiftData &siftData,
+void ExtractSift(DeviceSiftData &siftData,
                  const DeviceDescriptorNormalizerData &d_normalizer,
                  const CudaImage &img, int numOctaves, float thresh,
-                 float lowestScale = 0.0f, bool scaleUp = false) {
+                 float lowestScale = 0.0f, bool scaleUp = false,
+                 cudaStream_t stream = 0) {
   TempMemory tmp(img.width, img.height, numOctaves, scaleUp);
   ExtractSift(siftData, d_normalizer, img, numOctaves, thresh,
-              lowestScale, scaleUp, tmp);
+              lowestScale, scaleUp, tmp, stream);
 }
 
 void PrintSiftData(SiftData &data);
-double MatchSiftData(SiftData &data1, SiftData &data2);
-double FindHomography(SiftData &data,  float *homography, int *numMatches, int numLoops = 1000, float minScore = 0.85f, float maxAmbiguity = 0.95f, float thresh = 5.0f);
+double MatchSiftData(const DeviceSiftData &data1, const DeviceSiftData &data2, cudaStream_t stream = 0);
+double FindHomography(DeviceSiftData &data,  float *homography, int *numMatches,
+                      int numLoops = 1000, float minScore = 0.85f,
+                      float maxAmbiguity = 0.95f, float thresh = 5.0f,
+                      cudaStream_t stream = 0);
 
 #endif

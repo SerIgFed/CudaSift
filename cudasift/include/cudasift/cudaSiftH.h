@@ -8,31 +8,31 @@
 // CUDA SIFT extractor by Marten Bjorkman aka Celebrandil //
 //********************************************************//
 
-int ExtractSiftLoop(SiftData &siftData, const CudaImage &img,
+int ExtractSiftLoop(DeviceSiftData &siftData, const CudaImage &img,
                     const DeviceDescriptorNormalizerData &d_normalizer,
                     int numOctaves, double initBlur, float thresh, float lowestScale,
-                    float subsampling, TempMemory &memorySub);
-void ExtractSiftOctave(SiftData &siftData, const CudaImage &img,
+                    float subsampling, TempMemory &memorySub, cudaStream_t stream);
+void ExtractSiftOctave(DeviceSiftData &siftData, const CudaImage &img,
                        const DeviceDescriptorNormalizerData &d_normalizer,
                        int octave, float thresh, float lowestScale,
-                       float subsampling, TempMemory &memoryTmp);
-double ScaleDown(const SiftData &siftData, const CudaImage &res, const CudaImage &src);
-double ScaleUp(const SiftData &siftData, const CudaImage &res, const CudaImage &src);
-double ComputeOrientations(cudaTextureObject_t texObj, SiftData &siftData,
-                           const TempMemory &tempMemory, int octave);
-double ExtractSiftDescriptors(cudaTextureObject_t texObj, SiftData &siftData,
+                       float subsampling, TempMemory &memoryTmp, cudaStream_t stream);
+double ScaleDown(const CudaImage &res, const CudaImage &src, cudaStream_t stream);
+double ScaleUp(const CudaImage &res, const CudaImage &src, cudaStream_t stream);
+double ComputeOrientations(cudaTextureObject_t texObj, DeviceSiftData &siftData,
+                           const TempMemory &tempMemory, int octave, cudaStream_t stream);
+double ExtractSiftDescriptors(cudaTextureObject_t texObj, DeviceSiftData &siftData,
                               const TempMemory &tempMemory,
                               const DeviceDescriptorNormalizerData &d_normalizer,
-                              float subsampling, int octave);
-double OrientAndExtract(cudaTextureObject_t texObj, SiftData &siftData,
-                        const TempMemory tempMemory, float subsampling, int octave);
-double RescalePositions(SiftData &siftData, float scale);
-double LowPass(const SiftData &siftData, const CudaImage &res, const CudaImage &src);
+                              float subsampling, int octave, cudaStream_t stream);
+double OrientAndExtract(cudaTextureObject_t texObj, DeviceSiftData &siftData,
+                        const TempMemory tempMemory, float subsampling, int octave, cudaStream_t stream);
+double RescalePositions(DeviceSiftData &siftData, float scale, cudaStream_t stream);
+double LowPass(const CudaImage &res, const CudaImage &src, cudaStream_t stream);
 void PrepareLaplaceKernels(int numOctaves, float initBlur, float *kernel);
-double LaplaceMulti(const SiftData &siftData, const CudaImage &baseImage, const CudaImage *results, int octave);
-double FindPointsMulti(const CudaImage *sources, SiftData &siftData,
+double LaplaceMulti(const CudaImage &baseImage, const CudaImage *results, int octave, cudaStream_t stream);
+double FindPointsMulti(const CudaImage *sources, DeviceSiftData &siftData,
                        const TempMemory &tempMemory,
                        float thresh, float edgeLimit, float factor,
-                       float lowestScale, float subsampling, int octave);
+                       float lowestScale, float subsampling, int octave, cudaStream_t stream);
 
 #endif
