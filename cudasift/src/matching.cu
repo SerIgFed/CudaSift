@@ -315,8 +315,8 @@ __global__ void FindMaxCorr10(SiftPoint *sift1, SiftPoint *sift2, int numPts1, i
   float sec_score[NRX];
   int index[NRX];
   for (int i=0;i<NRX;i++) {
-    max_score[i] = 0.0f;
-    sec_score[i] = 0.0f;
+    max_score[i] = -1.0f;
+    sec_score[i] = -1.0f;
     index[i] = -1;
   }
   int idx = ty*M7W + tx;
@@ -353,10 +353,11 @@ __global__ void FindMaxCorr10(SiftPoint *sift1, SiftPoint *sift2, int numPts1, i
 	for (int i=0;i<NRX;i++) {
 	  if (score[dy][i]>max_score[i]) {
 	    sec_score[i] = max_score[i];
-	    max_score[i] = score[dy][i];     
+	    max_score[i] = score[dy][i];
 	    index[i] = min(bp2 + M7R*iy + dy, numPts2-1);
 	  } else if (score[dy][i]>sec_score[i])
 	    sec_score[i] = score[dy][i];
+//          if (index[i] < 0) printf("%d/%d %d/%d %d %f\n", bp1 + tx, numPts1, index[i], numPts2, i, score[dy][i]);
 	}
       }
     }
@@ -389,6 +390,7 @@ __global__ void FindMaxCorr10(SiftPoint *sift1, SiftPoint *sift2, int numPts1, i
           sec_score = scores1[y * M7W + tx];
       }
     }
+//    if (index < 0) printf("%d/%d %d/%d\n", bp1 + tx, numPts1, index, numPts2);
     sift1[bp1 + tx].score = max_score;
     sift1[bp1 + tx].match = index;
     sift1[bp1 + tx].match_xpos = sift2[index].xpos;

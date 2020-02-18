@@ -8,14 +8,22 @@
 // CUDA SIFT extractor by Marten Bjorkman aka Celebrandil //
 //********************************************************//
 
-int ExtractSiftLoop(DeviceSiftData &siftData, const CudaImage &img,
+int ComputeSiftLoop(DeviceSiftData &siftData, const CudaImage &img,
                     const DeviceDescriptorNormalizerData &d_normalizer,
                     int numOctaves, double initBlur, float thresh, float lowestScale,
                     float subsampling, TempMemory &memorySub, cudaStream_t stream);
-void ExtractSiftOctave(DeviceSiftData &siftData, const CudaImage &img,
+void ComputeSiftOctave(DeviceSiftData &siftData, const CudaImage &img,
                        const DeviceDescriptorNormalizerData &d_normalizer,
                        int octave, float thresh, float lowestScale,
                        float subsampling, TempMemory &memoryTmp, cudaStream_t stream);
+int ExtractSiftLoop(DeviceSiftData &siftData, const CudaImage &img,
+                    const DeviceDescriptorNormalizerData &d_normalizer,
+                    int numOctaves, double initBlur, float subsampling,
+                    TempMemory &memorySub, bool scaled, cudaStream_t stream);
+void ExtractSiftOctave(DeviceSiftData &siftData, const CudaImage &img,
+                       const DeviceDescriptorNormalizerData &d_normalizer,
+                       int octave, float subsampling, TempMemory &memoryTmp,
+                       cudaStream_t stream);
 double ScaleDown(const CudaImage &res, const CudaImage &src, cudaStream_t stream);
 double ScaleUp(const CudaImage &res, const CudaImage &src, cudaStream_t stream);
 double ComputeOrientations(cudaTextureObject_t texObj, DeviceSiftData &siftData,

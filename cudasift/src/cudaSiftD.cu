@@ -384,10 +384,12 @@ ExtractSiftDescriptorsCONSTNew(cudaTextureObject_t texObj, SiftPoint *d_sift,
 
   int fstPts = min(d_PointCounter[2*octave-1], d_MaxNumPoints);
   int totPts = min(d_PointCounter[2*octave+1], d_MaxNumPoints);
-  //if (tx==0 && ty==0)
-  //  printf("%d %d %d %d\n", octave, fstPts, min(d_PointCounter[2*octave], d_MaxNumPoints), totPts); 
+//  if (tx==0 && ty==0)
+//    printf("%d %d %d %d\n", octave, fstPts, min(d_PointCounter[2*octave], d_MaxNumPoints), totPts);
   for (int bx = blockIdx.x + fstPts; bx < totPts; bx += gridDim.x) {
-    
+    if (d_sift[bx].subsampling != subsampling)
+      continue;
+
     buffer[idx] = 0.0f;
     __syncthreads();
 
@@ -994,7 +996,7 @@ __global__ void ComputeOrientationsCONSTNew(float *image, int w, int p, int h, S
 #undef RAD
 #undef WID
 #undef LEN
-} 
+}
 
 // With constant number of blocks
 __global__ void ComputeOrientationsCONST(cudaTextureObject_t texObj, SiftPoint *d_Sift, unsigned int *d_PointCounter, int octave)

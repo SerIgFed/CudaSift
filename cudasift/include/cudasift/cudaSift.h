@@ -134,6 +134,12 @@ void ExtractSift(DeviceSiftData &siftData,
                  float lowestScale, bool scaleUp,
                  TempMemory &tempMemory, cudaStream_t stream = 0);
 
+void ExtractSift(DeviceSiftData &siftData,
+                 const DeviceDescriptorNormalizerData &d_normalizer,
+                 const CudaImage &detect_img, const CudaImage &extract_img,
+                 int numOctaves, float thresh, float lowestScale, bool scaleUp,
+                 TempMemory &tempMemory, cudaStream_t stream = 0);
+
 inline
 void ExtractSift(DeviceSiftData &siftData,
                  const DeviceDescriptorNormalizerData &d_normalizer,
