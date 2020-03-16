@@ -17,7 +17,7 @@ add_library(${LIBRARY_NAME} ${SOURCE_FILES} ${HEADER_FILES})
 target_include_directories(${LIBRARY_NAME} PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>
     ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 
-target_link_libraries(${LIBRARY_NAME} ${CUDA_cudadevrt_LIBRARY})
+target_link_libraries(${LIBRARY_NAME} ${CUDA_CUDART_LIBRARY})
 
 install(
 	TARGETS ${LIBRARY_NAME}
