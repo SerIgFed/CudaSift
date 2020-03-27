@@ -3,6 +3,7 @@
 
 #include <cstdio>
 #include <iostream>
+#include <stdexcept>
 
 #ifdef WIN32
 #include <intrin.h>
@@ -15,7 +16,7 @@ inline void __safeCall(cudaError err, const char *file, const int line)
 {
   if (cudaSuccess != err) {
     fprintf(stderr, "safeCall() Runtime API error in file <%s>, line %i : %s.\n", file, line, cudaGetErrorString(err));
-    exit(-1);
+    throw std::runtime_error("CUDA runtime API error");
   }
 }
 
@@ -24,7 +25,7 @@ inline void __checkMsg(const char *errorMessage, const char *file, const int lin
   cudaError_t err = cudaGetLastError();
   if (cudaSuccess != err) {
     fprintf(stderr, "checkMsg() CUDA error: %s in file <%s>, line %i : %s.\n", errorMessage, file, line, cudaGetErrorString(err));
-    exit(-1);
+    throw std::runtime_error("CUDA error");
   }
 }
 

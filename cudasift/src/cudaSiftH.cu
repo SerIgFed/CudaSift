@@ -205,10 +205,14 @@ TempMemory &TempMemory::operator=(TempMemory &&other) noexcept {
 }
 
 TempMemory::~TempMemory() {
-  for (auto tex : textures)
-    safeCall(cudaDestroyTextureObject(tex));
-  safeCall(cudaFree(d_data));
-  safeCall(cudaFree(d_PointCounter));
+  try {
+    for (auto tex : textures)
+      safeCall(cudaDestroyTextureObject(tex));
+    safeCall(cudaFree(d_data));
+    safeCall(cudaFree(d_PointCounter));
+  } catch(std::exception &e) {
+    printf("Error during TempMemory destruction: %s\n", e.what());
+  }
 }
 
 void ExtractSift(DeviceSiftData &siftData,
@@ -632,13 +636,17 @@ SiftData::~SiftData() {
 }
 
 DeviceSiftData::~DeviceSiftData() {
+  try {
 #ifdef MANAGEDMEM
-  if (m_data!=nullptr)
-    safeCall(cudaFree(m_data));
+    if (m_data!=nullptr)
+      safeCall(cudaFree(m_data));
 #else
-  if (d_data!=nullptr)
-    safeCall(cudaFree(d_data));
+    if (d_data!=nullptr)
+      safeCall(cudaFree(d_data));
 #endif
+  } catch(std::exception &e) {
+    printf("Error during DeviceSiftData destruction: %s\n", e.what());
+  }
 }
 
 SiftData &SiftData::operator=(const SiftData &other) {
@@ -755,8 +763,12 @@ DeviceDescriptorNormalizerData::DeviceDescriptorNormalizerData(const DescriptorN
 }
 
 DeviceDescriptorNormalizerData::~DeviceDescriptorNormalizerData() {
-  if (d_normalizer)
-    safeCall(cudaFree(d_normalizer));
+  try {
+    if (d_normalizer)
+      safeCall(cudaFree(d_normalizer));
+  } catch(std::exception &e) {
+    printf("Error during DeviceDescriptorNormalizerData destruction: %s\n", e.what());
+  }
 }
 
 DeviceDescriptorNormalizerData::DeviceDescriptorNormalizerData(DeviceDescriptorNormalizerData &&other) noexcept
