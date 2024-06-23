@@ -18,11 +18,12 @@ set(CMAKE_PROJECT_VERSION_PATCH "${VERSION_PATCH}${VERSION_SHA1}")
 set(CPACK_GENERATOR "TGZ")
 include(CPack)
 
-
 find_package(OpenCV REQUIRED)
 
 include(GNUInstallDirs)
 
 add_subdirectory(cudasift)
-add_subdirectory(examples)
 
+if (BUILD_TESTS)
+add_subdirectory(examples)
+endif()
